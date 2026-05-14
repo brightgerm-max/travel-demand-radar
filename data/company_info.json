@@ -1,0 +1,29 @@
+{
+  "자사": {
+    "name": "클룩",
+    "mall_names": ["클룩", "Klook"],
+    "brand_keywords": ["클룩", "클룩 할인코드", "클룩 쿠폰"]
+  },
+  "경쟁사": [
+    {
+      "name": "야놀자",
+      "mall_names": ["야놀자", "Yanolja"],
+      "brand_keywords": ["야놀자 해외여행"]
+    },
+    {
+      "name": "마이리얼트립",
+      "mall_names": ["마이리얼트립", "MyRealTrip"],
+      "brand_keywords": ["마이리얼트립"]
+    },
+    {
+      "name": "트립닷컴",
+      "mall_names": ["트립닷컴", "Trip.com"],
+      "brand_keywords": ["트립닷컴"]
+    },
+    {
+      "name": "카약",
+      "mall_names": ["카약", "KAYAK"],
+      "brand_keywords": ["카약"]
+    }
+  ]
+}
