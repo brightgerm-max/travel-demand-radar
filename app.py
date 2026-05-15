@@ -835,9 +835,19 @@ def page_query():
     elif 분석유형 == "경쟁사 분석":
         own_kw = company_info.get("자사", {}).get("brand_keywords", [])
         competitors = company_info.get("경쟁사", [])
+
+        # 경쟁사 브랜드별 키워드 선택
+        brand_options = ["전체 경쟁사"] + [c["name"] for c in competitors]
+        선택_브랜드 = st.multiselect("경쟁사 브랜드 선택", brand_options, default=["전체 경쟁사"], key="q_comp_brands")
+
         comp_kw = []
-        for comp in competitors:
-            comp_kw.extend(comp.get("brand_keywords", []))
+        if "전체 경쟁사" in 선택_브랜드:
+            for comp in competitors:
+                comp_kw.extend(comp.get("brand_keywords", []))
+        else:
+            for comp in competitors:
+                if comp["name"] in 선택_브랜드:
+                    comp_kw.extend(comp.get("brand_keywords", []))
 
         all_kw = own_kw + comp_kw
         if not all_kw:
@@ -1212,51 +1222,94 @@ def page_settings():
     with tab_kw:
         kw_data = load_json("trend_keywords.json")
 
-        for category in ["자사", "경쟁사", "시즌"]:
-            with st.expander(f"📂 {category} 키워드", expanded=False):
+        def _parse_keywords(text):
+            """쉼표, 줄바꿈, 세미콜론으로 키워드 분리."""
+            import re
+            items = re.split(r"[,;\n\r]+", text)
+            return [k.strip() for k in items if k.strip()]
+
+        def _render_keyword_section(section_key, keywords, kw_data, prefix):
+            """키워드 섹션 렌더: expander 안에서 태그 표시, 쉼표/줄바꿈 추가, 체크박스 삭제."""
+            # 키워드 태그 표시
+            if keywords:
+                tag_html = " ".join([
+                    f'<span style="display:inline-block;background:#eef;border-radius:12px;padding:4px 12px;margin:3px;font-size:13px;">{k}</span>'
+                    for k in keywords
+                ])
+                st.markdown(tag_html, unsafe_allow_html=True)
+            else:
+                st.caption("(등록된 키워드 없음)")
+
+            # 추가 (쉼표/줄바꿈 지원)
+            new_kw_text = st.text_area(
+                "키워드 추가 (쉼표, 줄바꿈으로 여러 개 입력)",
+                height=68, key=f"kw_add_{prefix}",
+                placeholder="예: 일본여행, 오사카여행\n도쿄여행",
+            )
+            if st.button("➕ 추가", key=f"kw_btn_{prefix}") and new_kw_text:
+                new_items = _parse_keywords(new_kw_text)
+                added = [k for k in new_items if k not in keywords]
+                if added:
+                    keywords.extend(added)
+                    _save_kw_section(section_key, keywords, kw_data)
+                    st.success(f"{len(added)}개 추가: {', '.join(added)}")
+                    st.rerun()
+                else:
+                    st.warning("이미 등록된 키워드입니다.")
+
+            # 체크박스 일괄 삭제
+            if keywords:
+                st.markdown("**삭제할 키워드 선택:**")
+                del_targets = []
+                cols = st.columns(min(len(keywords), 4))
+                for i, kw in enumerate(keywords):
+                    with cols[i % len(cols)]:
+                        if st.checkbox(kw, key=f"kw_chk_{prefix}_{i}"):
+                            del_targets.append(kw)
+                if del_targets and st.button(f"🗑️ 선택 삭제 ({len(del_targets)}개)", key=f"kw_del_{prefix}"):
+                    for k in del_targets:
+                        keywords.remove(k)
+                    _save_kw_section(section_key, keywords, kw_data)
+                    st.success(f"{len(del_targets)}개 삭제 완료")
+                    st.rerun()
+
+        def _save_kw_section(section_key, keywords, kw_data):
+            if "/" in section_key:
+                _, country = section_key.split("/", 1)
+                kw_data["국가별"][country] = keywords
+            else:
+                kw_data[section_key] = keywords
+            save_json("trend_keywords.json", kw_data)
+
+        # 일반 카테고리
+        for category in ["자사", "시즌"]:
+            with st.expander(f"📂 {category} 키워드 ({len(kw_data.get(category, []))}개)", expanded=False):
                 keywords = kw_data.get(category, [])
                 if isinstance(keywords, list):
-                    st.markdown(" · ".join([f"`{k}`" for k in keywords]) if keywords else "(없음)")
-                    c1, c2 = st.columns([3, 1])
-                    with c1:
-                        new_kw = st.text_input(f"{category} 키워드 추가", key=f"kw_add_{category}")
-                    with c2:
-                        st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)
-                        if st.button("추가", key=f"kw_btn_{category}") and new_kw:
-                            keywords.append(new_kw)
-                            kw_data[category] = keywords
-                            save_json("trend_keywords.json", kw_data)
-                            st.rerun()
-                    if keywords:
-                        del_kw = st.selectbox(f"삭제할 키워드", keywords, key=f"kw_del_{category}")
-                        if st.button("삭제", key=f"kw_rm_{category}"):
-                            keywords.remove(del_kw)
-                            kw_data[category] = keywords
-                            save_json("trend_keywords.json", kw_data)
-                            st.rerun()
+                    _render_keyword_section(category, keywords, kw_data, category)
+
+        # 경쟁사: 브랜드별로 구분
+        company_info = load_json("company_info.json")
+        competitors = company_info.get("경쟁사", [])
+        with st.expander(f"📂 경쟁사 키워드 ({len(kw_data.get('경쟁사', []))}개)", expanded=False):
+            comp_kw = kw_data.get("경쟁사", [])
+            # 브랜드별 선택 필터
+            if competitors:
+                brand_options = ["전체"] + [c["name"] for c in competitors]
+                선택_브랜드 = st.selectbox("브랜드별 필터", brand_options, key="kw_comp_brand")
+                if 선택_브랜드 != "전체":
+                    selected_comp = next((c for c in competitors if c["name"] == 선택_브랜드), None)
+                    if selected_comp:
+                        brand_kw = selected_comp.get("brand_keywords", [])
+                        st.caption(f"{선택_브랜드} 등록 키워드: {', '.join(brand_kw) if brand_kw else '없음'}")
+            _render_keyword_section("경쟁사", comp_kw, kw_data, "경쟁사")
 
         # 국가별 키워드
         country_kw = kw_data.get("국가별", {})
-        for country, keywords in country_kw.items():
-            with st.expander(f"🌍 {country} 키워드", expanded=False):
-                st.markdown(" · ".join([f"`{k}`" for k in keywords]) if keywords else "(없음)")
-                c1, c2 = st.columns([3, 1])
-                with c1:
-                    new_kw = st.text_input(f"{country} 키워드 추가", key=f"kw_add_country_{country}")
-                with c2:
-                    st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)
-                    if st.button("추가", key=f"kw_btn_country_{country}") and new_kw:
-                        keywords.append(new_kw)
-                        kw_data["국가별"][country] = keywords
-                        save_json("trend_keywords.json", kw_data)
-                        st.rerun()
-                if keywords:
-                    del_kw = st.selectbox("삭제할 키워드", keywords, key=f"kw_del_country_{country}")
-                    if st.button("삭제", key=f"kw_rm_country_{country}"):
-                        keywords.remove(del_kw)
-                        kw_data["국가별"][country] = keywords
-                        save_json("trend_keywords.json", kw_data)
-                        st.rerun()
+        for country in sorted(country_kw.keys()):
+            keywords = country_kw[country]
+            with st.expander(f"🌍 {country} ({len(keywords)}개)", expanded=False):
+                _render_keyword_section(f"국가별/{country}", keywords, kw_data, f"country_{country}")
 
         # 국가 추가
         st.markdown("---")
