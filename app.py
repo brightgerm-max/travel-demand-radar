@@ -514,11 +514,11 @@ def page_forecast():
                 labels={"연월_str": "연월", "쿼리수": "검색량"},
             )
             fig_trend12.update_layout(
-                height=420, margin=dict(l=0, r=0, t=10, b=60),
+                height=400, margin=dict(l=0, r=0, t=30, b=40),
                 plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5),
-                xaxis=dict(gridcolor="rgba(0,0,0,0.05)", tickangle=-45),
-                yaxis=dict(gridcolor="rgba(0,0,0,0.08)", tickformat=","),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+                xaxis=dict(gridcolor="rgba(0,0,0,0.05)", tickangle=-45, title=""),
+                yaxis=dict(gridcolor="rgba(0,0,0,0.08)", tickformat=",", title=""),
             )
             st.plotly_chart(fig_trend12, use_container_width=True)
 
