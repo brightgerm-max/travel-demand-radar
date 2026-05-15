@@ -1366,10 +1366,8 @@ def page_settings():
                 with st.form(f"kwdel_{prefix}"):
                     st.caption("삭제할 키워드를 선택하세요:")
                     checks = {}
-                    cols = st.columns(min(len(keywords), 4))
-                    for i, kw in enumerate(keywords):
-                        with cols[i % len(cols)]:
-                            checks[kw] = st.checkbox(kw, key=f"kwchk_{prefix}_{kw}")
+                    for kw in keywords:
+                        checks[kw] = st.checkbox(kw, key=f"kwchk_{prefix}_{kw}")
                     if st.form_submit_button("선택 삭제"):
                         to_del = [kw for kw, v in checks.items() if v]
                         if to_del:
