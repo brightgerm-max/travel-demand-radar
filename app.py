@@ -81,6 +81,51 @@ def load_fallback_data():
     df["쿼리수"] = pd.to_numeric(df["쿼리수"], errors="coerce").fillna(0)
     return df
 
+# ── API 기반 데이터 로더 (캐싱) ────────────────────
+@st.cache_data(ttl=3600, show_spinner="🔍 검색량 데이터 조회 중...")
+def load_searchad_data(_keywords_tuple):
+    """검색광고 API로 국가별 대표 키워드 월간 검색수 조회. 결과를 국가별로 집계."""
+    keywords_by_country = dict(_keywords_tuple)
+    rows = []
+    for country, kw_list in keywords_by_country.items():
+        if not kw_list:
+            continue
+        df = naver_searchad.get_keyword_stats(kw_list[:5])
+        if df.empty:
+            continue
+        # 입력 키워드만 필터 (연관키워드 제외)
+        kw_set = set(k.lower() for k in kw_list[:5])
+        matched = df[df["relKeyword"].str.lower().isin(kw_set)]
+        if matched.empty:
+            matched = df.head(len(kw_list[:5]))
+        for _, r in matched.iterrows():
+            pc = int(r.get("monthlyPcQcCnt", 0))
+            mo = int(r.get("monthlyMobileQcCnt", 0))
+            rows.append({
+                "국가": country,
+                "키워드": r.get("relKeyword", ""),
+                "PC검색수": pc,
+                "모바일검색수": mo,
+                "총검색수": pc + mo,
+            })
+    return pd.DataFrame(rows) if rows else pd.DataFrame()
+
+@st.cache_data(ttl=3600, show_spinner="📈 트렌드 데이터 조회 중...")
+def load_trend_data(_keywords_tuple, start_date, end_date):
+    """데이터랩 API로 국가별 키워드 트렌드 조회."""
+    keywords_by_country = dict(_keywords_tuple)
+    all_dfs = []
+    for country, kw_list in keywords_by_country.items():
+        if not kw_list:
+            continue
+        # 국가 대표 키워드를 하나의 그룹으로 묶어서 조회
+        group = {"groupName": country, "keywords": kw_list[:5]}
+        df = naver_datalab.fetch_trend([group], start_date, end_date, time_unit="month")
+        if not df.empty:
+            df["국가"] = country
+            all_dfs.append(df)
+    return pd.concat(all_dfs, ignore_index=True) if all_dfs else pd.DataFrame()
+
 # ── 국가별 고정 색상 팔레트 ──────────────────────────
 COUNTRY_COLORS = [
     "#667eea", "#f5576c", "#11998e", "#f093fb", "#36d1dc",
@@ -263,50 +308,57 @@ def api_or_fallback():
 #  메뉴 1: 수요 예측
 # ====================================================================
 def page_forecast():
-    df = load_fallback_data()
     country_map = load_json("country_mapping.json")
+    keywords_data = load_json("trend_keywords.json")
+    country_kw = keywords_data.get("국가별", {})
+
+    # API 모드 판별
+    use_api = naver_searchad.is_available()
+    api_mode = "실시간 API" if use_api else "데모 모드 (Fallback CSV)"
+
+    # 국가 목록: trend_keywords.json 기준
+    국가_목록 = sorted(country_kw.keys())
 
     # 배너
-    min_d = df["주차시작일"].min().strftime("%Y.%m.%d")
-    max_d = df["주차시작일"].max().strftime("%Y.%m.%d")
-    n_countries = df["국가"].nunique()
-    n_keywords = df["키워드"].nunique()
-    api_mode = "실시간 API" if api_or_fallback() else "데모 모드 (Fallback CSV)"
+    n_countries = len(국가_목록)
+    n_keywords = sum(len(v) for v in country_kw.values())
     st.markdown(f"""
     <div class="top-banner">
         <div class="banner-icon">🗺️</div>
         <div class="banner-text">
             <h2>수요 예측</h2>
-            <p>📅 {min_d} ~ {max_d} | 🏳️ {n_countries}개 국가 | 🔑 {n_keywords}개 키워드 | 📡 {api_mode}</p>
+            <p>🏳️ {n_countries}개 국가 | 🔑 {n_keywords}개 키워드 | 📡 {api_mode}</p>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # ── 상단 필터 바 ──────────────────────────────
-    csv_countries = sorted(df["국가"].dropna().unique())
-    all_mapped_countries = sorted(country_map.keys())
-    국가_목록 = csv_countries + [c for c in all_mapped_countries if c not in csv_countries]
-
     월_목록 = list(range(1, 13))
+
+    # expander 열림 상태 추적
+    if "fc_exp_month" not in st.session_state:
+        st.session_state["fc_exp_month"] = False
+    if "fc_exp_country" not in st.session_state:
+        st.session_state["fc_exp_country"] = False
 
     with st.container(border=True):
         # 1행: 연도
-        연도_목록 = sorted(df["연도"].unique())
-        선택_연도 = st.selectbox("연도", 연도_목록, index=len(연도_목록)-1, key="fc_year")
+        선택_연도 = st.selectbox("연도", [2024, 2025, 2026], index=2, key="fc_year")
 
-        # 2행: 월 선택 (expander + 체크박스)
+        # 2행: 월 선택
         월_선택수 = sum(1 for m in 월_목록 if st.session_state.get(f"fc_m_{m}", True))
-        with st.expander(f"📆 월 선택 ({월_선택수}개월 선택됨)", expanded=False):
+        with st.expander(f"📆 월 선택 ({월_선택수}개월 선택됨)", expanded=st.session_state["fc_exp_month"]):
             ma1, ma2, _ = st.columns([1, 1, 4])
             with ma1:
                 if st.button("전체 선택", key="fc_m_all", use_container_width=True):
                     for m in 월_목록:
                         st.session_state[f"fc_m_{m}"] = True
+                    st.session_state["fc_exp_month"] = True
                     st.rerun()
             with ma2:
                 if st.button("전체 해제", key="fc_m_none", use_container_width=True):
                     for m in 월_목록:
                         st.session_state[f"fc_m_{m}"] = False
+                    st.session_state["fc_exp_month"] = True
                     st.rerun()
             cols = st.columns(6)
             for i, m in enumerate(월_목록):
@@ -314,19 +366,21 @@ def page_forecast():
                     st.checkbox(f"{m}월", value=True, key=f"fc_m_{m}")
         선택_월 = [m for m in 월_목록 if st.session_state.get(f"fc_m_{m}", True)]
 
-        # 3행: 국가 선택 (expander + 체크박스)
+        # 3행: 국가 선택
         국가_선택수 = sum(1 for c in 국가_목록 if st.session_state.get(f"fc_c_{c}", True))
-        with st.expander(f"🌍 국가 선택 ({국가_선택수}개국 선택됨)", expanded=False):
+        with st.expander(f"🌍 국가 선택 ({국가_선택수}개국 선택됨)", expanded=st.session_state["fc_exp_country"]):
             ca1, ca2, _ = st.columns([1, 1, 4])
             with ca1:
                 if st.button("전체 선택", key="fc_c_all", use_container_width=True):
                     for c in 국가_목록:
                         st.session_state[f"fc_c_{c}"] = True
+                    st.session_state["fc_exp_country"] = True
                     st.rerun()
             with ca2:
                 if st.button("전체 해제", key="fc_c_none", use_container_width=True):
                     for c in 국가_목록:
                         st.session_state[f"fc_c_{c}"] = False
+                    st.session_state["fc_exp_country"] = True
                     st.rerun()
             cols = st.columns(5)
             for i, c in enumerate(국가_목록):
@@ -350,94 +404,77 @@ def page_forecast():
         st.warning("월을 1개 이상 선택해주세요.")
         return
 
-    # 필터링 (CSV 데이터) — spinner으로 로딩 표시
-    csv_선택_국가 = [c for c in 선택_국가 if c in csv_countries]
-    extra_국가 = [c for c in 선택_국가 if c not in csv_countries]
+    # ── 데이터 로드: API 우선, CSV fallback ───────
+    # 선택 국가의 키워드 가져오기
+    selected_kw = {c: country_kw.get(c, [f"{c}여행"]) for c in 선택_국가}
+    kw_tuple = tuple(sorted(selected_kw.items()))  # cache key용
 
-    with st.spinner("데이터 조회 중..."):
-        filtered = df[
-            (df["국가"].isin(csv_선택_국가)) &
-            (df["연도"] == 선택_연도) &
-            (df["월"].isin(선택_월))
-        ]
-
-    # CSV에 없는 국가도 포함하여 순위 생성
-    if filtered.empty and not extra_국가:
-        st.warning("선택한 조건에 해당하는 데이터가 없습니다.")
-        return
-
-    국가순위 = (
-        filtered.groupby("국가")["쿼리수"].sum()
-        .sort_values(ascending=False).index.tolist()
-    ) if not filtered.empty else []
-    국가순위 += extra_국가
-    csv_국가순위 = [c for c in 국가순위 if c in csv_countries]
-    color_map = get_country_color_map(국가순위)
-
-    # ── KPI 카드 (필터 바로 아래) ─────────────────
-    총쿼리 = int(filtered["쿼리수"].sum()) if not filtered.empty else 0
-    최고국가 = filtered.groupby("국가")["쿼리수"].sum().idxmax() if not filtered.empty else "-"
-    최고키워드 = filtered.groupby("키워드")["쿼리수"].sum().idxmax() if not filtered.empty else "-"
-    monthly_kpi = filtered.groupby(["국가", "연월"])["쿼리수"].sum().reset_index().sort_values(["국가", "연월"]) if not filtered.empty else pd.DataFrame()
-    if not monthly_kpi.empty:
-        recent = monthly_kpi.groupby("국가").tail(2)
-        country_delta = recent.groupby("국가")["쿼리수"].agg(
-            lambda x: x.iloc[-1] - x.iloc[0] if len(x) == 2 else None
-        ).dropna()
-        하락국가_이름 = country_delta.idxmin() if not country_delta.empty else "-"
+    if use_api:
+        # 검색광고 API로 월간 검색수
+        search_df = load_searchad_data(kw_tuple)
+        # 데이터랩 API로 트렌드
+        trend_api_df = load_trend_data(kw_tuple, f"{선택_연도}-01-01", f"{선택_연도}-12-31")
     else:
-        하락국가_이름 = "-"
+        search_df = pd.DataFrame()
+        trend_api_df = pd.DataFrame()
+
+    # API 데이터 또는 CSV fallback
+    if not search_df.empty:
+        # API 데이터로 국가별 검색량 집계
+        country_search = search_df.groupby("국가")["총검색수"].sum().reset_index()
+        country_search.columns = ["국가", "검색량"]
+        data_source = "API"
+    else:
+        # CSV fallback
+        fallback_df = load_fallback_data()
+        fb_filtered = fallback_df[
+            (fallback_df["국가"].isin(선택_국가)) &
+            (fallback_df["연도"] == 선택_연도) &
+            (fallback_df["월"].isin(선택_월))
+        ]
+        country_search = fb_filtered.groupby("국가")["쿼리수"].sum().reset_index()
+        country_search.columns = ["국가", "검색량"]
+        data_source = "CSV"
+
+    # 선택했지만 데이터 없는 국가 추가
+    for c in 선택_국가:
+        if c not in country_search["국가"].values:
+            country_search = pd.concat([country_search, pd.DataFrame([{"국가": c, "검색량": 0}])], ignore_index=True)
+
+    # 국가 순위
+    국가순위 = country_search.sort_values("검색량", ascending=False)["국가"].tolist()
+    color_map = get_country_color_map(국가순위)
+    데이터_국가 = [c for c in 국가순위 if country_search[country_search["국가"] == c]["검색량"].iloc[0] > 0]
+
+    # ── KPI 카드 ─────────────────────────────────
+    총검색 = int(country_search["검색량"].sum())
+    최고국가 = country_search.loc[country_search["검색량"].idxmax(), "국가"] if 총검색 > 0 else "-"
+    # 최다 검색 키워드
+    if not search_df.empty:
+        최고키워드 = search_df.loc[search_df["총검색수"].idxmax(), "키워드"] if not search_df.empty else "-"
+    else:
+        최고키워드 = "-"
+    하락국가_이름 = "-"  # 트렌드 데이터에서 계산
 
     k1, k2, k3, k4 = st.columns(4)
     with k1:
-        st.markdown(f'<div class="kpi-card blue"><div class="kpi-icon">📊</div><div class="kpi-label">전체 쿼리 합계</div><div class="kpi-value">{총쿼리:,}</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="kpi-card blue"><div class="kpi-icon">📊</div><div class="kpi-label">전체 검색량 합계</div><div class="kpi-value">{총검색:,}</div></div>', unsafe_allow_html=True)
     with k2:
         st.markdown(f'<div class="kpi-card green"><div class="kpi-icon">🏆</div><div class="kpi-label">최고 수요 국가</div><div class="kpi-value">{최고국가}</div></div>', unsafe_allow_html=True)
     with k3:
         st.markdown(f'<div class="kpi-card orange"><div class="kpi-icon">🔑</div><div class="kpi-label">최다 검색 키워드</div><div class="kpi-value">{최고키워드}</div></div>', unsafe_allow_html=True)
     with k4:
-        st.markdown(f'<div class="kpi-card red"><div class="kpi-icon">⚠️</div><div class="kpi-label">하락 주의 국가</div><div class="kpi-value">{하락국가_이름}</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="kpi-card red"><div class="kpi-icon">⚠️</div><div class="kpi-label">데이터 소스</div><div class="kpi-value">{data_source} ({len(데이터_국가)}개국)</div></div>', unsafe_allow_html=True)
 
     st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
 
-    # ── 섹션 1: 세계지도 히트맵 ───────────────────
+    # ── 세계지도 히트맵 ──────────────────────────
     st.markdown('<div class="section-header">🗺️ 세계 여행 수요 예측 지도</div>', unsafe_allow_html=True)
 
-    # demand_score 계산: (출국자 0.6 + 검색트렌드 0.4) or 검색트렌드만
-    if not filtered.empty:
-        country_query = filtered.groupby("국가")["쿼리수"].sum().reset_index()
-    else:
-        country_query = pd.DataFrame(columns=["국가", "쿼리수"])
-    # CSV에 없는 국가는 지도에만 표시 (demand_score 0)
-    for ec in extra_국가:
-        if ec not in country_query["국가"].values:
-            country_query = pd.concat([country_query, pd.DataFrame([{"국가": ec, "쿼리수": 0}])], ignore_index=True)
-
-    # demand_score: CSV 검색량 기반만 (검색량 0 → 점수 0)
-    max_search = country_query["쿼리수"].max()
-    country_query["normalized_search"] = (country_query["쿼리수"] / max_search) if max_search > 0 else 0
-
-    # 관광통계 API 연결 시 출국자 수 반영
-    if tourism_stats.is_available():
-        try:
-            dep_df = tourism_stats.fetch_departure_stats(선택_연도)
-            if not dep_df.empty and "natKorNm" in dep_df.columns and "num" in dep_df.columns:
-                dep_agg = dep_df.groupby("natKorNm")["num"].sum().reset_index()
-                dep_agg.columns = ["국가", "출국자수"]
-                country_query = country_query.merge(dep_agg, on="국가", how="left")
-                country_query["출국자수"] = country_query["출국자수"].fillna(0)
-                max_dep = country_query["출국자수"].max()
-                country_query["normalized_departure"] = (country_query["출국자수"] / max_dep) if max_dep > 0 else 0
-                country_query["demand_score"] = (
-                    country_query["normalized_departure"] * 0.6 +
-                    country_query["normalized_search"] * 0.4
-                ) * 100
-            else:
-                country_query["demand_score"] = country_query["normalized_search"] * 100
-        except Exception:
-            country_query["demand_score"] = country_query["normalized_search"] * 100
-    else:
-        country_query["demand_score"] = country_query["normalized_search"] * 100
+    # demand_score 계산
+    country_query = country_search.copy()
+    max_s = country_query["검색량"].max()
+    country_query["demand_score"] = (country_query["검색량"] / max_s * 100) if max_s > 0 else 0
 
     # ISO 코드 매핑
     country_query["iso_alpha3"] = country_query["국가"].map(
@@ -450,7 +487,7 @@ def page_forecast():
             locations=map_data["iso_alpha3"],
             z=map_data["demand_score"],
             text=map_data["국가"],
-            customdata=np.stack([map_data["쿼리수"], map_data["demand_score"]], axis=-1),
+            customdata=np.stack([map_data["검색량"], map_data["demand_score"]], axis=-1),
             hovertemplate="<b>%{text}</b><br>수요 점수: %{customdata[1]:.1f}<br>검색량: %{customdata[0]:,.0f}<extra></extra>",
             colorscale=[
                 [0, "#e8eaf6"], [0.2, "#7986cb"], [0.4, "#5c6bc0"],
@@ -487,7 +524,7 @@ def page_forecast():
     with col_top:
         st.markdown("**🏆 TOP 10 핫 국가**")
         top10 = country_query.sort_values("demand_score", ascending=False).head(10)
-        top10_display = top10[["국가", "쿼리수", "demand_score"]].copy()
+        top10_display = top10[["국가", "검색량", "demand_score"]].copy()
         top10_display.columns = ["국가", "검색량", "수요점수"]
         top10_display["검색량"] = top10_display["검색량"].apply(lambda x: f"{int(x):,}")
         top10_display["수요점수"] = top10_display["수요점수"].apply(lambda x: f"{x:.1f}")
@@ -495,217 +532,154 @@ def page_forecast():
         st.dataframe(top10_display, use_container_width=True, height=380)
 
     with col_trend_map:
-        st.markdown("**📊 상위 국가 12개월 추이**")
-        # CSV 데이터 있는 국가 중 상위 5개국
-        top5_countries = csv_국가순위[:5]
-        all_data = df[df["국가"].isin(top5_countries)]
-        monthly_trend = all_data.groupby(["국가", "연월"])["쿼리수"].sum().reset_index()
-        monthly_trend["연월_str"] = monthly_trend["연월"].astype(str)
-        monthly_trend = monthly_trend.sort_values(["국가", "연월_str"])
-        recent_months = sorted(monthly_trend["연월_str"].unique())[-12:]
-        monthly_trend = monthly_trend[monthly_trend["연월_str"].isin(recent_months)]
-        if not monthly_trend.empty:
-            fig_trend12 = px.line(
-                monthly_trend, x="연월_str", y="쿼리수", color="국가",
-                markers=True, color_discrete_map=color_map,
-                category_orders={"국가": top5_countries},
-                labels={"연월_str": "연월", "쿼리수": "검색량"},
-            )
-            fig_trend12.update_layout(
-                height=400, margin=dict(l=0, r=0, t=30, b=40),
-                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
-                xaxis=dict(gridcolor="rgba(0,0,0,0.05)", tickangle=-45, title=""),
-                yaxis=dict(gridcolor="rgba(0,0,0,0.08)", tickformat=",", title=""),
-            )
-            st.plotly_chart(fig_trend12, use_container_width=True)
+        st.markdown("**📊 상위 국가 트렌드**")
+        if not trend_api_df.empty:
+            # API 트렌드 데이터 사용
+            top5 = 국가순위[:5]
+            t5_df = trend_api_df[trend_api_df["국가"].isin(top5)].copy()
+            if not t5_df.empty:
+                t5_df["period_str"] = t5_df["period"].dt.strftime("%Y-%m")
+                fig_trend12 = px.line(
+                    t5_df, x="period_str", y="ratio", color="국가",
+                    markers=True, color_discrete_map=color_map,
+                    category_orders={"국가": top5},
+                    labels={"period_str": "연월", "ratio": "검색 트렌드"},
+                )
+                fig_trend12.update_layout(
+                    height=400, margin=dict(l=0, r=0, t=30, b=40),
+                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+                    xaxis=dict(gridcolor="rgba(0,0,0,0.05)", tickangle=-45, title=""),
+                    yaxis=dict(gridcolor="rgba(0,0,0,0.08)", tickformat=",", title=""),
+                )
+                st.plotly_chart(fig_trend12, use_container_width=True)
+            else:
+                st.info("트렌드 데이터가 없습니다.")
+        else:
+            st.info("트렌드 API 미연결 상태입니다.")
 
     st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
 
-    # ── 섹션 3: 수요 트렌드 ──────────────────────
-    if filtered.empty:
-        st.info("선택한 국가에 검색 데이터가 없습니다. 데이터가 있는 국가를 포함해주세요.")
+    # ── 섹션 3: 수요 트렌드 (API 기반) ─────────────
+    if not 데이터_국가:
+        st.info("선택한 국가에 검색 데이터가 없습니다.")
         return
-    if extra_국가:
-        st.caption(f"ℹ️ 검색 데이터: {len(csv_국가순위)}개국 표시 (나머지 {len(extra_국가)}개국은 데이터 미보유)")
+
     st.markdown('<div class="section-header">📈 수요 트렌드</div>', unsafe_allow_html=True)
     col_chart, col_rank = st.columns([3, 1])
 
     with col_chart:
-        보기방식 = st.radio("보기 방식", ["누적", "추이"], horizontal=True, key="fc_trend_mode")
-        if 보기방식 == "누적":
-            trend = filtered.groupby(["국가", "월"])["쿼리수"].sum().reset_index()
-            선택_월_정렬 = [f"{m}월" for m in sorted(선택_월)]
-            trend["월표시"] = pd.Categorical(
-                trend["월"].astype(str) + "월", categories=선택_월_정렬, ordered=True
-            )
-            trend = trend.sort_values(["국가", "월표시"])
-            fig = px.line(
-                trend, x="월표시", y="쿼리수", color="국가", markers=True,
-                category_orders={"국가": 국가순위, "월표시": 선택_월_정렬},
-                color_discrete_map=color_map,
-                labels={"월표시": "월", "쿼리수": "쿼리 수"},
-            )
+        if not trend_api_df.empty:
+            trend_filtered = trend_api_df[trend_api_df["국가"].isin(데이터_국가)].copy()
+            if not trend_filtered.empty:
+                trend_filtered["period_str"] = trend_filtered["period"].dt.strftime("%Y-%m")
+                # 선택 월 필터
+                trend_filtered["월"] = trend_filtered["period"].dt.month
+                trend_filtered = trend_filtered[trend_filtered["월"].isin(선택_월)]
+                fig = px.line(
+                    trend_filtered, x="period_str", y="ratio", color="국가",
+                    markers=True, color_discrete_map=color_map,
+                    category_orders={"국가": 데이터_국가},
+                    labels={"period_str": "연월", "ratio": "검색 트렌드"},
+                )
+                fig.update_layout(
+                    height=420, margin=dict(l=0, r=0, t=20, b=40),
+                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+                    xaxis=dict(gridcolor="rgba(0,0,0,0.05)", tickangle=-45, title=""),
+                    yaxis=dict(gridcolor="rgba(0,0,0,0.08)", tickformat=",", title=""),
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("선택 조건의 트렌드 데이터가 없습니다.")
         else:
-            trend = filtered.groupby(["국가", "연월"])["쿼리수"].sum().reset_index()
-            trend["연월_str"] = trend["연월"].astype(str)
-            trend = trend.sort_values(["국가", "연월_str"])
-            fig = px.line(
-                trend, x="연월_str", y="쿼리수", color="국가", markers=True,
-                category_orders={"국가": 국가순위},
-                color_discrete_map=color_map,
-                labels={"연월_str": "연월", "쿼리수": "쿼리 수"},
-            )
-            fig.update_xaxes(tickangle=-45)
-
-        fig.update_layout(
-            height=420, margin=dict(l=0, r=0, t=20, b=0),
-            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-            legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
-            xaxis=dict(gridcolor="rgba(0,0,0,0.05)"),
-            yaxis=dict(gridcolor="rgba(0,0,0,0.08)", tickformat=","),
-        )
-        st.plotly_chart(fig, use_container_width=True)
+            st.info("트렌드 API 데이터를 불러올 수 없습니다.")
 
     with col_rank:
         st.markdown("**🏅 국가 순위**")
-        rank = filtered.groupby("국가")["쿼리수"].sum().sort_values(ascending=False).reset_index()
-        rank.columns = ["국가", "합계"]
+        rank = country_search[country_search["검색량"] > 0].sort_values("검색량", ascending=False).copy()
+        rank.columns = ["국가", "검색량"]
+        rank["검색량"] = rank["검색량"].apply(lambda x: f"{int(x):,}")
         rank.index = range(1, len(rank) + 1)
         rank.index.name = "순위"
-        rank["합계"] = rank["합계"].apply(lambda x: f"{int(x):,}")
         st.dataframe(rank, use_container_width=True, height=420)
 
     st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
 
-    # ── 섹션 4: 월별 수요 강세 (세로 배치) ──────────
-    st.markdown('<div class="section-header">🔥 월별 수요 강세 분석</div>', unsafe_allow_html=True)
-    heat_data = filtered.groupby(["국가", "월"])["쿼리수"].sum().reset_index()
-    heat_data["월표시"] = heat_data["월"].astype(str) + "월"
-    선택_월_정렬 = [f"{m}월" for m in sorted(선택_월)]
-    heat_data["월표시"] = pd.Categorical(heat_data["월표시"], categories=선택_월_정렬, ordered=True)
-    heat_data = heat_data.sort_values(["국가", "월표시"])
+    # ── 섹션 4: 키워드별 검색량 히트맵 ─────────────
+    if not search_df.empty:
+        st.markdown('<div class="section-header">🔥 국가별 키워드 검색량</div>', unsafe_allow_html=True)
 
-    # CSV에 있는 국가만 히트맵에 표시
+        # 국가별 키워드 검색량 히트맵
+        heat_data_api = search_df[search_df["국가"].isin(데이터_국가)].copy()
+        if not heat_data_api.empty:
+            heat_pivot = heat_data_api.pivot_table(
+                index="국가", columns="키워드", values="총검색수", aggfunc="sum"
+            ).fillna(0)
+            # 국가순위대로 정렬
+            heat_pivot = heat_pivot.reindex(index=[c for c in 데이터_국가 if c in heat_pivot.index])
 
-    # 히트맵 (전체 너비, 세로 배치)
-    st.markdown("**월별 x 국가 히트맵**")
-    heat_pivot = (
-        heat_data.pivot(index="국가", columns="월표시", values="쿼리수")
-        .fillna(0).reindex(index=csv_국가순위, columns=선택_월_정렬, fill_value=0)
-    )
-    text_display = []
-    for row in heat_pivot.values:
-        text_display.append([f"{int(v):,}" if v > 0 else "" for v in row])
+            text_display = []
+            for row in heat_pivot.values:
+                text_display.append([f"{int(v):,}" if v > 0 else "" for v in row])
 
-    n_countries_heat = len(csv_국가순위)
-    heat_height = max(400, n_countries_heat * 32 + 80)
-    fig_heat = go.Figure(data=go.Heatmap(
-        z=heat_pivot.values, x=heat_pivot.columns.tolist(), y=heat_pivot.index.tolist(),
-        text=text_display, texttemplate="%{text}", textfont={"size": 11},
-        colorscale=[[0,"#f0f4ff"],[0.25,"#b8ccff"],[0.5,"#667eea"],[0.75,"#4a5acf"],[1,"#2d3a8c"]],
-        hoverongaps=False,
-        hovertemplate="국가: %{y}<br>월: %{x}<br>쿼리수: %{z:,}<extra></extra>",
-        colorbar=dict(title="쿼리수", tickformat=","),
-    ))
-    fig_heat.update_layout(
-        height=heat_height, margin=dict(l=80, r=10, t=10, b=45),
-        xaxis=dict(tickmode="array", tickvals=선택_월_정렬, ticktext=선택_월_정렬, tickangle=0, side="bottom"),
-        yaxis=dict(autorange="reversed", categoryorder="array", categoryarray=csv_국가순위),
-        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-    )
-    st.plotly_chart(fig_heat, use_container_width=True)
+            n_c = len(heat_pivot)
+            fig_heat = go.Figure(data=go.Heatmap(
+                z=heat_pivot.values, x=heat_pivot.columns.tolist(), y=heat_pivot.index.tolist(),
+                text=text_display, texttemplate="%{text}", textfont={"size": 10},
+                colorscale=[[0,"#f0f4ff"],[0.25,"#b8ccff"],[0.5,"#667eea"],[0.75,"#4a5acf"],[1,"#2d3a8c"]],
+                hoverongaps=False,
+                hovertemplate="국가: %{y}<br>키워드: %{x}<br>검색량: %{z:,}<extra></extra>",
+                colorbar=dict(title="검색량", tickformat=","),
+            ))
+            fig_heat.update_layout(
+                height=max(400, n_c * 35 + 100), margin=dict(l=80, r=10, t=10, b=100),
+                xaxis=dict(tickangle=-45, side="bottom"),
+                yaxis=dict(autorange="reversed"),
+                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+            )
+            st.plotly_chart(fig_heat, use_container_width=True)
 
-    # 상위/하위 테이블 (히트맵 아래, 전체 너비)
-    st.markdown("**국가별 상위/하위 월**")
-    summary_rows = []
-    for country in csv_국가순위:
-        c_month = heat_data[heat_data["국가"] == country].copy()
-        if c_month.empty:
-            continue
-        top3 = c_month.sort_values("쿼리수", ascending=False).head(3)
-        bottom3 = c_month.sort_values("쿼리수", ascending=True).head(3)
-        top_text = " / ".join([f"{row['월표시']} ({int(row['쿼리수']):,})" for _, row in top3.iterrows()])
-        bottom_text = " / ".join([f"{row['월표시']} ({int(row['쿼리수']):,})" for _, row in bottom3.iterrows()])
-        summary_rows.append({"국가": country, "🔺 상위 3개월": top_text, "🔻 하위 3개월": bottom_text})
-    if summary_rows:
-        st.dataframe(pd.DataFrame(summary_rows), hide_index=True, use_container_width=True)
+        # 국가별 총 검색량 상위/하위
+        st.markdown("**국가별 검색량 순위**")
+        rank_full = country_search[country_search["검색량"] > 0].sort_values("검색량", ascending=False).copy()
+        rank_full["검색량"] = rank_full["검색량"].apply(lambda x: f"{int(x):,}")
+        st.dataframe(rank_full, hide_index=True, use_container_width=True)
 
     st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
 
-    # ── 섹션 5: 자동 인사이트 ─────────────────────
+    # ── 섹션 5: 자동 인사이트 (트렌드 API 기반) ─────
     st.markdown('<div class="section-header">💡 자동 인사이트</div>', unsafe_allow_html=True)
 
-    # 인사이트용: 전체 기간 데이터 (CSV에 있는 선택 국가만)
-    all_years_data = df[df["국가"].isin(csv_선택_국가)]
-    nation_df = all_years_data.groupby(["국가", "연월"])["쿼리수"].sum().reset_index()
-    nation_df["연월_str"] = nation_df["연월"].astype(str)
-    nation_df = nation_df.sort_values(["국가", "연월_str"])
-    kw_df = all_years_data.groupby(["국가", "키워드", "연월"])["쿼리수"].sum().reset_index()
-    kw_df["연월_str"] = kw_df["연월"].astype(str)
-    kw_df = kw_df.sort_values(["국가", "키워드", "연월_str"])
+    if not trend_api_df.empty:
+        insights = []
+        for country in 데이터_국가:
+            c_data = trend_api_df[trend_api_df["국가"] == country].sort_values("period")
+            c_vals = c_data["ratio"].values
+            if len(c_vals) < 2:
+                continue
+            slope = get_trend_slope(c_vals)
+            mean_val = c_vals.mean()
+            slope_rate = (slope / mean_val) if mean_val > 0 else 0
+            mom_rate = ((c_vals[-1] - c_vals[-2]) / c_vals[-2]) if c_vals[-2] > 0 else 0
 
-    def get_top_keywords_insight(국가, mode="trend", top_n=3):
-        c_kw = kw_df[kw_df["국가"] == 국가]
-        pivot = c_kw.pivot_table(index="키워드", columns="연월", values="쿼리수", aggfunc="sum").fillna(0)
-        if pivot.shape[1] < 2:
-            return "키워드 데이터 없음"
-        rows = []
-        for kw in pivot.index:
-            vals = pivot.loc[kw].values
-            if mode == "trend":
-                slope = get_trend_slope(vals)
-                before = vals[-min(4, len(vals))]
-                after = vals[-1]
-                diff = after - before
-                rate = ((diff / before) * 100) if before > 0 else 0
-                rows.append((kw, slope, diff, rate))
-            else:
-                if len(vals) < 2:
-                    continue
-                before, after = vals[-2], vals[-1]
-                diff = after - before
-                rate = ((diff / before) * 100) if before > 0 else 0
-                rows.append((kw, abs(diff), diff, rate))
-        if not rows:
-            return "키워드 데이터 없음"
-        rows_sorted = sorted(rows, key=lambda x: abs(x[1]), reverse=True)[:top_n]
-        tags = []
-        for kw, _, diff, rate in rows_sorted:
-            sign = "+" if diff >= 0 else ""
-            tags.append(f"{kw} {sign}{rate:.0f}%({sign}{int(diff):,})")
-        return " / ".join(tags) if tags else "키워드 데이터 없음"
+            if mom_rate >= 0.2:
+                insights.append(("surge", "⚡ 급등", country, f"전월 대비 {mom_rate*100:.0f}% 급등"))
+            elif mom_rate <= -0.2:
+                insights.append(("drop", "📉 급락", country, f"전월 대비 {abs(mom_rate)*100:.0f}% 급락"))
+            elif slope_rate > 0.02:
+                insights.append(("up", "📈 상승세", country, f"최근 {len(c_vals)}개월 우상향 추세"))
+            elif slope_rate < -0.02:
+                insights.append(("down", "⚠️ 하락세", country, f"최근 {len(c_vals)}개월 우하향 추세"))
 
-    insights = []
-    insight_국가 = [c for c in 국가순위 if c in csv_선택_국가]
-    for country in insight_국가:
-        c_vals = nation_df[nation_df["국가"] == country]["쿼리수"].values
-        if len(c_vals) < 2:
-            continue
-        slope = get_trend_slope(c_vals)
-        mean_val = c_vals.mean()
-        slope_rate = (slope / mean_val) if mean_val > 0 else 0
-        mom_rate = ((c_vals[-1] - c_vals[-2]) / c_vals[-2]) if c_vals[-2] > 0 else 0
-
-        if mom_rate >= 0.2:
-            kw_tag = get_top_keywords_insight(country, mode="mom")
-            insights.append(("surge", "⚡ 급등", country, f"전월 대비 {mom_rate*100:.0f}% 급등", f"급등 키워드: {kw_tag}"))
-        elif mom_rate <= -0.2:
-            kw_tag = get_top_keywords_insight(country, mode="mom")
-            insights.append(("drop", "📉 급락", country, f"전월 대비 {abs(mom_rate)*100:.0f}% 급락", f"급락 키워드: {kw_tag}"))
-        elif slope_rate > 0.02:
-            kw_tag = get_top_keywords_insight(country, mode="trend")
-            insights.append(("up", "📈 상승세", country, f"최근 {len(c_vals)}개월 우상향 추세", f"주 상승 키워드: {kw_tag}"))
-        elif slope_rate < -0.02:
-            kw_tag = get_top_keywords_insight(country, mode="trend")
-            insights.append(("down", "⚠️ 하락세", country, f"최근 {len(c_vals)}개월 우하향 추세", f"주 감소 키워드: {kw_tag}"))
-
-    if insights:
-        for group_type in ["surge", "drop", "up", "down"]:
-            for css_class, badge, country, msg, kw_msg in [i for i in insights if i[0] == group_type]:
-                st.markdown(f'<div class="insight-card {css_class}"><div class="insight-title">{badge} {country}</div><div class="insight-body">{msg}<br>↳ {kw_msg}</div></div>', unsafe_allow_html=True)
+        if insights:
+            for group_type in ["surge", "drop", "up", "down"]:
+                for css_class, badge, country, msg in [i for i in insights if i[0] == group_type]:
+                    st.markdown(f'<div class="insight-card {css_class}"><div class="insight-title">{badge} {country}</div><div class="insight-body">{msg}</div></div>', unsafe_allow_html=True)
+        else:
+            st.write("현재 기간에서 특이 패턴이 감지되지 않았어요.")
     else:
-        st.write("현재 기간에서 특이 패턴이 감지되지 않았어요.")
+        st.write("트렌드 데이터가 없어 인사이트를 생성할 수 없습니다.")
 
 
 # ====================================================================
