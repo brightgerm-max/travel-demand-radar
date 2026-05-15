@@ -112,17 +112,25 @@ def load_searchad_data(_keywords_tuple):
 
 @st.cache_data(ttl=3600, show_spinner="📈 트렌드 데이터 조회 중...")
 def load_trend_data(_keywords_tuple, start_date, end_date):
-    """데이터랩 API로 국가별 키워드 트렌드 조회."""
+    """데이터랩 API로 국가별 키워드 트렌드 조회. 5개국씩 배치."""
+    if not naver_datalab.is_available():
+        return pd.DataFrame()
     keywords_by_country = dict(_keywords_tuple)
+    countries = list(keywords_by_country.keys())
     all_dfs = []
-    for country, kw_list in keywords_by_country.items():
-        if not kw_list:
+    # 5개국씩 배치 (API 1회당 5개 keywordGroup 제한)
+    for i in range(0, len(countries), 5):
+        batch_countries = countries[i:i+5]
+        groups = []
+        for c in batch_countries:
+            kw_list = keywords_by_country[c]
+            if kw_list:
+                groups.append({"groupName": c, "keywords": kw_list[:5]})
+        if not groups:
             continue
-        # 국가 대표 키워드를 하나의 그룹으로 묶어서 조회
-        group = {"groupName": country, "keywords": kw_list[:5]}
-        df = naver_datalab.fetch_trend([group], start_date, end_date, time_unit="month")
+        df = naver_datalab.fetch_trend(groups, start_date, end_date, time_unit="month")
         if not df.empty:
-            df["국가"] = country
+            df = df.rename(columns={"keyword": "국가"})
             all_dfs.append(df)
     return pd.concat(all_dfs, ignore_index=True) if all_dfs else pd.DataFrame()
 
@@ -413,7 +421,10 @@ def page_forecast():
         # 검색광고 API로 월간 검색수
         search_df = load_searchad_data(kw_tuple)
         # 데이터랩 API로 트렌드
-        trend_api_df = load_trend_data(kw_tuple, f"{선택_연도}-01-01", f"{선택_연도}-12-31")
+        from datetime import date
+        today = date.today().isoformat()
+        end_dt = today if 선택_연도 >= date.today().year else f"{선택_연도}-12-31"
+        trend_api_df = load_trend_data(kw_tuple, f"{선택_연도}-01-01", end_dt)
     else:
         search_df = pd.DataFrame()
         trend_api_df = pd.DataFrame()
