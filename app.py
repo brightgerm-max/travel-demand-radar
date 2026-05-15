@@ -287,53 +287,61 @@ def page_forecast():
     all_mapped_countries = sorted(country_map.keys())
     국가_목록 = csv_countries + [c for c in all_mapped_countries if c not in csv_countries]
 
-    # session_state로 국가 선택 관리
+    # session_state 초기화
+    월_목록 = [f"{m}월" for m in range(1, 13)]
     if "fc_countries_val" not in st.session_state:
         st.session_state["fc_countries_val"] = 국가_목록.copy()
+    if "fc_months_val" not in st.session_state:
+        st.session_state["fc_months_val"] = 월_목록.copy()
 
     with st.container(border=True):
-        # 1행: 연도 + 전체선택/해제
-        r1c1, r1c2, r1c3, r1c4 = st.columns([1.5, 0.8, 0.8, 5])
-        with r1c1:
+        # 좌: 연도+월  |  우: 국가
+        left_col, right_col = st.columns([1, 2])
+
+        with left_col:
             연도_목록 = sorted(df["연도"].unique())
             선택_연도 = st.selectbox("연도", 연도_목록, index=len(연도_목록)-1, key="fc_year")
-        with r1c2:
-            st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
-            if st.button("전체 선택", key="fc_sel_all", use_container_width=True):
-                st.session_state["fc_countries_val"] = 국가_목록.copy()
-                st.rerun()
-        with r1c3:
-            st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
-            if st.button("전체 해제", key="fc_sel_none", use_container_width=True):
-                st.session_state["fc_countries_val"] = []
-                st.rerun()
 
-        # 2행: 국가 선택 (전체 너비)
-        선택_국가 = st.multiselect(
-            "국가", 국가_목록,
-            default=st.session_state["fc_countries_val"],
-            key="fc_countries",
-        )
-        st.session_state["fc_countries_val"] = 선택_국가
+            # 월 선택 (multiselect, 국가와 동일 UX)
+            b1, b2 = st.columns(2)
+            with b1:
+                if st.button("전체 월", key="fc_m_all", use_container_width=True):
+                    st.session_state["fc_months_val"] = 월_목록.copy()
+                    st.rerun()
+            with b2:
+                if st.button("월 해제", key="fc_m_none", use_container_width=True):
+                    st.session_state["fc_months_val"] = []
+                    st.rerun()
+            선택_월_str = st.multiselect(
+                "월", 월_목록,
+                default=st.session_state["fc_months_val"],
+                key="fc_months",
+            )
+            st.session_state["fc_months_val"] = 선택_월_str
+            선택_월 = [int(m.replace("월", "")) for m in 선택_월_str]
 
-        # 3행: 월 선택 (체크박스, 6+6 배치)
-        st.caption("월 선택")
-        선택_월 = []
-        row1 = st.columns(6)
-        for i in range(6):
-            with row1[i]:
-                if st.checkbox(f"{i+1}월", value=True, key=f"fc_m{i+1}"):
-                    선택_월.append(i + 1)
-        row2 = st.columns(6)
-        for i in range(6):
-            with row2[i]:
-                if st.checkbox(f"{i+7}월", value=True, key=f"fc_m{i+7}"):
-                    선택_월.append(i + 7)
+        with right_col:
+            # 국가 선택 (multiselect)
+            b1, b2 = st.columns(2)
+            with b1:
+                if st.button("전체 국가", key="fc_sel_all", use_container_width=True):
+                    st.session_state["fc_countries_val"] = 국가_목록.copy()
+                    st.rerun()
+            with b2:
+                if st.button("국가 해제", key="fc_sel_none", use_container_width=True):
+                    st.session_state["fc_countries_val"] = []
+                    st.rerun()
+            선택_국가 = st.multiselect(
+                "국가", 국가_목록,
+                default=st.session_state["fc_countries_val"],
+                key="fc_countries",
+            )
+            st.session_state["fc_countries_val"] = 선택_국가
 
-        # 요약 (하단 여백 포함)
+        # 요약 뱃지 (여백 충분히)
         월_cnt = len(선택_월)
         st.markdown(f"""
-        <div style="padding: 8px 0 4px 0;">
+        <div style="padding: 10px 0 12px 0;">
             <span class="badge">{len(선택_국가)}개국</span>
             <span class="badge">{선택_연도}년</span>
             <span class="badge">{월_cnt}개월</span>
