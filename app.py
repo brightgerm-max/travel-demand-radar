@@ -534,8 +534,10 @@ def page_forecast():
 
     # ── 섹션 3: 수요 트렌드 ──────────────────────
     if filtered.empty:
-        st.info("CSV 데이터가 없는 국가만 선택되었습니다. API 연결 시 실시간 데이터가 표시됩니다.")
+        st.info("선택한 국가에 검색 데이터가 없습니다. 데이터가 있는 국가를 포함해주세요.")
         return
+    if extra_국가:
+        st.caption(f"ℹ️ 검색 데이터: {len(csv_국가순위)}개국 표시 (나머지 {len(extra_국가)}개국은 데이터 미보유)")
     st.markdown('<div class="section-header">📈 수요 트렌드</div>', unsafe_allow_html=True)
     col_chart, col_rank = st.columns([3, 1])
 
