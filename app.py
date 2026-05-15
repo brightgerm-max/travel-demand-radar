@@ -154,27 +154,12 @@ section[data-testid="stSidebar"] .stButton > button[kind="primary"] {
 .insight-card.down { background: #fff8ee; border-color: #f39c12; }
 .insight-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
 .insight-body { font-size: 13px; color: #555; line-height: 1.5; }
-/* Filter Bar */
-.filter-bar {
-    background: linear-gradient(135deg, #f8f9ff 0%, #eef1ff 100%);
-    border: 1px solid rgba(102,126,234,0.15);
-    border-radius: 12px;
-    padding: 16px 20px 10px 20px;
-    margin-bottom: 16px;
-    box-shadow: 0 2px 12px rgba(102,126,234,0.08);
-}
-.filter-summary {
-    font-size: 12px; color: #666; padding: 6px 0 2px 0;
-    border-top: 1px solid rgba(102,126,234,0.1); margin-top: 4px;
-}
-.filter-summary .badge {
+/* Filter summary badges */
+.badge {
     display: inline-block; background: #667eea; color: white;
     border-radius: 10px; padding: 2px 10px; font-size: 11px;
     font-weight: 600; margin-right: 6px;
 }
-/* Compact checkboxes in filter bar */
-.filter-bar .stCheckbox { margin-bottom: -10px; }
-.filter-bar .stCheckbox label { font-size: 13px !important; }
 /* Section Header */
 .section-header {
     font-size: 18px; font-weight: 700; color: #1a1a2e;
@@ -331,19 +316,24 @@ def page_forecast():
         )
         st.session_state["fc_countries_val"] = 선택_국가
 
-        # 3행: 월 선택 (체크박스)
+        # 3행: 월 선택 (체크박스, 6+6 배치)
         st.caption("월 선택")
-        월_cols = st.columns(12)
         선택_월 = []
-        for i, col in enumerate(월_cols):
-            with col:
+        row1 = st.columns(6)
+        for i in range(6):
+            with row1[i]:
                 if st.checkbox(f"{i+1}월", value=True, key=f"fc_m{i+1}"):
                     선택_월.append(i + 1)
+        row2 = st.columns(6)
+        for i in range(6):
+            with row2[i]:
+                if st.checkbox(f"{i+7}월", value=True, key=f"fc_m{i+7}"):
+                    선택_월.append(i + 7)
 
-        # 요약
+        # 요약 (하단 여백 포함)
         월_cnt = len(선택_월)
         st.markdown(f"""
-        <div class="filter-summary">
+        <div style="padding: 8px 0 4px 0;">
             <span class="badge">{len(선택_국가)}개국</span>
             <span class="badge">{선택_연도}년</span>
             <span class="badge">{월_cnt}개월</span>
