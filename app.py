@@ -377,8 +377,8 @@ def page_forecast():
         filtered.groupby("국가")["쿼리수"].sum()
         .sort_values(ascending=False).index.tolist()
     ) if not filtered.empty else []
-    # CSV에 없는 국가는 뒤에 추가
     국가순위 += extra_국가
+    csv_국가순위 = [c for c in 국가순위 if c in csv_countries]
     color_map = get_country_color_map(국가순위)
 
     # ── KPI 카드 (필터 바로 아래) ─────────────────
@@ -415,49 +415,14 @@ def page_forecast():
         country_query = filtered.groupby("국가")["쿼리수"].sum().reset_index()
     else:
         country_query = pd.DataFrame(columns=["국가", "쿼리수"])
-    # CSV에 없는 국가 추가 (쿼리수 0)
+    # CSV에 없는 국가는 지도에만 표시 (demand_score 0)
     for ec in extra_국가:
         if ec not in country_query["국가"].values:
             country_query = pd.concat([country_query, pd.DataFrame([{"국가": ec, "쿼리수": 0}])], ignore_index=True)
 
-    # 데이터랩 API 연결 시: 실시간 검색 트렌드 반영
-    if naver_datalab.is_available():
-        keywords_data = load_json("trend_keywords.json")
-        country_kw = keywords_data.get("국가별", {})
-        api_scores = {}
-        for country in country_query["국가"].tolist():
-            kw_list = country_kw.get(country, [f"{country}여행"])
-            try:
-                trend_df = naver_datalab.fetch_trend(
-                    kw_list[:5],
-                    f"{선택_연도}-{min(선택_월):02d}-01",
-                    f"{선택_연도}-{min(max(선택_월)+1,12):02d}-01",
-                    time_unit="month",
-                )
-                if not trend_df.empty:
-                    api_scores[country] = trend_df["ratio"].mean()
-            except Exception:
-                pass
-        if api_scores:
-            country_query["api_trend"] = country_query["국가"].map(api_scores).fillna(0)
-            max_api = country_query["api_trend"].max()
-            if max_api > 0:
-                country_query["normalized_api"] = country_query["api_trend"] / max_api
-            else:
-                country_query["normalized_api"] = 0
-            # CSV 검색량과 API 트렌드를 혼합
-            max_search = country_query["쿼리수"].max()
-            country_query["normalized_search"] = (country_query["쿼리수"] / max_search) if max_search > 0 else 0
-            country_query["normalized_search"] = (
-                country_query["normalized_search"] * 0.5 +
-                country_query["normalized_api"] * 0.5
-            )
-        else:
-            max_search = country_query["쿼리수"].max()
-            country_query["normalized_search"] = (country_query["쿼리수"] / max_search) if max_search > 0 else 0
-    else:
-        max_search = country_query["쿼리수"].max()
-        country_query["normalized_search"] = (country_query["쿼리수"] / max_search) if max_search > 0 else 0
+    # demand_score: CSV 검색량 기반만 (검색량 0 → 점수 0)
+    max_search = country_query["쿼리수"].max()
+    country_query["normalized_search"] = (country_query["쿼리수"] / max_search) if max_search > 0 else 0
 
     # 관광통계 API 연결 시 출국자 수 반영
     if tourism_stats.is_available():
@@ -538,13 +503,12 @@ def page_forecast():
 
     with col_trend_map:
         st.markdown("**📊 상위 국가 12개월 추이**")
-        # 수요순위 기준 상위 5개국의 최근 12개월 데이터
-        top5_countries = 국가순위[:5]
+        # CSV 데이터 있는 국가 중 상위 5개국
+        top5_countries = csv_국가순위[:5]
         all_data = df[df["국가"].isin(top5_countries)]
         monthly_trend = all_data.groupby(["국가", "연월"])["쿼리수"].sum().reset_index()
         monthly_trend["연월_str"] = monthly_trend["연월"].astype(str)
         monthly_trend = monthly_trend.sort_values(["국가", "연월_str"])
-        # 국가별 최근 12개월만 추출
         recent_months = sorted(monthly_trend["연월_str"].unique())[-12:]
         monthly_trend = monthly_trend[monthly_trend["연월_str"].isin(recent_months)]
         if not monthly_trend.empty:
@@ -555,9 +519,9 @@ def page_forecast():
                 labels={"연월_str": "연월", "쿼리수": "검색량"},
             )
             fig_trend12.update_layout(
-                height=380, margin=dict(l=0, r=0, t=10, b=0),
+                height=420, margin=dict(l=0, r=0, t=10, b=60),
                 plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
+                legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5),
                 xaxis=dict(gridcolor="rgba(0,0,0,0.05)", tickangle=-45),
                 yaxis=dict(gridcolor="rgba(0,0,0,0.08)", tickformat=","),
             )
@@ -627,8 +591,7 @@ def page_forecast():
     heat_data["월표시"] = pd.Categorical(heat_data["월표시"], categories=선택_월_정렬, ordered=True)
     heat_data = heat_data.sort_values(["국가", "월표시"])
 
-    # CSV에 있는 국가만 히트맵에 표시 (데이터 있는 국가)
-    csv_국가순위 = [c for c in 국가순위 if c in csv_countries]
+    # CSV에 있는 국가만 히트맵에 표시
 
     # 히트맵 (전체 너비, 세로 배치)
     st.markdown("**월별 x 국가 히트맵**")
@@ -678,8 +641,8 @@ def page_forecast():
     # ── 섹션 5: 자동 인사이트 ─────────────────────
     st.markdown('<div class="section-header">💡 자동 인사이트</div>', unsafe_allow_html=True)
 
-    # 인사이트용: 전체 기간 데이터 (추세 분석을 위해 모든 연도 포함)
-    all_years_data = df[df["국가"].isin(선택_국가)]
+    # 인사이트용: 전체 기간 데이터 (CSV에 있는 선택 국가만)
+    all_years_data = df[df["국가"].isin(csv_선택_국가)]
     nation_df = all_years_data.groupby(["국가", "연월"])["쿼리수"].sum().reset_index()
     nation_df["연월_str"] = nation_df["연월"].astype(str)
     nation_df = nation_df.sort_values(["국가", "연월_str"])
@@ -719,7 +682,8 @@ def page_forecast():
         return " / ".join(tags) if tags else "키워드 데이터 없음"
 
     insights = []
-    for country in 국가순위:
+    insight_국가 = [c for c in 국가순위 if c in csv_선택_국가]
+    for country in insight_국가:
         c_vals = nation_df[nation_df["국가"] == country]["쿼리수"].values
         if len(c_vals) < 2:
             continue
