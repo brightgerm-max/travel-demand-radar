@@ -288,62 +288,70 @@ def page_forecast():
     국가_목록 = csv_countries + [c for c in all_mapped_countries if c not in csv_countries]
 
     # session_state 초기화
-    월_목록 = [f"{m}월" for m in range(1, 13)]
-    if "fc_countries_val" not in st.session_state:
-        st.session_state["fc_countries_val"] = 국가_목록.copy()
-    if "fc_months_val" not in st.session_state:
-        st.session_state["fc_months_val"] = 월_목록.copy()
+    월_목록 = list(range(1, 13))
+    if "fc_country_checks" not in st.session_state:
+        st.session_state["fc_country_checks"] = {c: True for c in 국가_목록}
+    # 새로운 국가 추가 시 동기화
+    for c in 국가_목록:
+        if c not in st.session_state["fc_country_checks"]:
+            st.session_state["fc_country_checks"][c] = True
+    if "fc_month_checks" not in st.session_state:
+        st.session_state["fc_month_checks"] = {m: True for m in 월_목록}
 
     with st.container(border=True):
-        # 1행: 연도 + 월 (가로 배치, 같은 높이)
-        c_year, c_month = st.columns([1, 3])
-        with c_year:
-            연도_목록 = sorted(df["연도"].unique())
-            선택_연도 = st.selectbox("연도", 연도_목록, index=len(연도_목록)-1, key="fc_year")
-        with c_month:
-            선택_월_str = st.multiselect(
-                "월", 월_목록,
-                default=st.session_state["fc_months_val"],
-                key="fc_months",
-            )
-            st.session_state["fc_months_val"] = 선택_월_str
-            선택_월 = [int(m.replace("월", "")) for m in 선택_월_str]
+        # 1행: 연도
+        연도_목록 = sorted(df["연도"].unique())
+        선택_연도 = st.selectbox("연도", 연도_목록, index=len(연도_목록)-1, key="fc_year")
 
-        # 2행: 국가 (전체 너비)
-        선택_국가 = st.multiselect(
-            "국가", 국가_목록,
-            default=st.session_state["fc_countries_val"],
-            key="fc_countries",
-        )
-        st.session_state["fc_countries_val"] = 선택_국가
+        # 2행: 월 선택 (expander + 체크박스)
+        with st.expander(f"📆 월 선택 ({sum(st.session_state['fc_month_checks'].values())}개월 선택됨)", expanded=False):
+            ma1, ma2, _ = st.columns([1, 1, 4])
+            with ma1:
+                if st.button("전체 선택", key="fc_m_all", use_container_width=True):
+                    st.session_state["fc_month_checks"] = {m: True for m in 월_목록}
+                    st.rerun()
+            with ma2:
+                if st.button("전체 해제", key="fc_m_none", use_container_width=True):
+                    st.session_state["fc_month_checks"] = {m: False for m in 월_목록}
+                    st.rerun()
+            cols = st.columns(6)
+            for i, m in enumerate(월_목록):
+                with cols[i % 6]:
+                    st.session_state["fc_month_checks"][m] = st.checkbox(
+                        f"{m}월", value=st.session_state["fc_month_checks"].get(m, True),
+                        key=f"fc_m_{m}",
+                    )
+        선택_월 = [m for m, v in st.session_state["fc_month_checks"].items() if v]
 
-        # 3행: 전체/해제 버튼 + 요약
-        b1, b2, b3, b4, b_summary = st.columns([1, 1, 1, 1, 4])
-        with b1:
-            if st.button("전체 월", key="fc_m_all", use_container_width=True):
-                st.session_state["fc_months_val"] = 월_목록.copy()
-                st.rerun()
-        with b2:
-            if st.button("월 해제", key="fc_m_none", use_container_width=True):
-                st.session_state["fc_months_val"] = []
-                st.rerun()
-        with b3:
-            if st.button("전체 국가", key="fc_sel_all", use_container_width=True):
-                st.session_state["fc_countries_val"] = 국가_목록.copy()
-                st.rerun()
-        with b4:
-            if st.button("국가 해제", key="fc_sel_none", use_container_width=True):
-                st.session_state["fc_countries_val"] = []
-                st.rerun()
-        with b_summary:
-            월_cnt = len(선택_월)
-            st.markdown(f"""
-            <div style="padding: 4px 0; text-align: right;">
-                <span class="badge">{len(선택_국가)}개국</span>
-                <span class="badge">{선택_연도}년</span>
-                <span class="badge">{월_cnt}개월</span>
-            </div>
-            """, unsafe_allow_html=True)
+        # 3행: 국가 선택 (expander + 체크박스)
+        n_selected = sum(st.session_state["fc_country_checks"].get(c, False) for c in 국가_목록)
+        with st.expander(f"🌍 국가 선택 ({n_selected}개국 선택됨)", expanded=False):
+            ca1, ca2, _ = st.columns([1, 1, 4])
+            with ca1:
+                if st.button("전체 선택", key="fc_c_all", use_container_width=True):
+                    st.session_state["fc_country_checks"] = {c: True for c in 국가_목록}
+                    st.rerun()
+            with ca2:
+                if st.button("전체 해제", key="fc_c_none", use_container_width=True):
+                    st.session_state["fc_country_checks"] = {c: False for c in 국가_목록}
+                    st.rerun()
+            cols = st.columns(5)
+            for i, c in enumerate(국가_목록):
+                with cols[i % 5]:
+                    st.session_state["fc_country_checks"][c] = st.checkbox(
+                        c, value=st.session_state["fc_country_checks"].get(c, True),
+                        key=f"fc_c_{c}",
+                    )
+        선택_국가 = [c for c in 국가_목록 if st.session_state["fc_country_checks"].get(c, False)]
+
+        # 요약
+        st.markdown(f"""
+        <div style="padding: 6px 0 8px 0;">
+            <span class="badge">{len(선택_국가)}개국</span>
+            <span class="badge">{선택_연도}년</span>
+            <span class="badge">{len(선택_월)}개월</span>
+        </div>
+        """, unsafe_allow_html=True)
 
     if not 선택_국가:
         st.warning("국가를 1개 이상 선택해주세요.")
