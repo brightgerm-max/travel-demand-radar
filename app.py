@@ -249,10 +249,11 @@ if "current_page" not in st.session_state:
     st.session_state["current_page"] = "forecast"
 
 MENU_ITEMS = [
-    {"key": "forecast", "label": "🗺️ 수요 예측"},
-    {"key": "query",    "label": "🔍 쿼리 분석"},
-    {"key": "price",    "label": "💰 가격 비교 분석"},
-    {"key": "settings", "label": "⚙️ 설정"},
+    {"key": "forecast",  "label": "🗺️ 수요 예측"},
+    {"key": "query",     "label": "🔍 쿼리 분석"},
+    {"key": "price",     "label": "💰 가격 비교 분석"},
+    {"key": "discover",  "label": "🔎 키워드 발굴"},
+    {"key": "settings",  "label": "⚙️ 설정"},
 ]
 
 # ── 사이드바 ────────────────────────────────────────
@@ -711,13 +712,15 @@ def page_query():
     company_info = load_json("company_info.json")
     df = load_fallback_data()
 
-    f1, f2, f3 = st.columns([2, 2, 1])
+    from datetime import date, timedelta
+    f1, f2, f3 = st.columns([2, 1.5, 1.5])
     with f1:
         분석유형 = st.selectbox("분석 유형", ["자사 분석", "국가별 분석", "경쟁사 분석"], key="q_type")
     with f2:
-        기간 = st.date_input("기간", value=[df["주차시작일"].min(), df["주차시작일"].max()], key="q_period")
+        시작일 = st.date_input("시작일", value=date.today() - timedelta(days=365), key="q_start")
     with f3:
-        집계_q = st.radio("집계", ["월간", "주간"], horizontal=True, key="q_agg")
+        종료일 = st.date_input("종료일", value=date.today(), key="q_end")
+    기간 = (시작일, 종료일)
 
     st.markdown("---")
 
@@ -731,9 +734,9 @@ def page_query():
         st.markdown('<div class="section-header">📊 자사 키워드 검색 트렌드</div>', unsafe_allow_html=True)
 
         if naver_datalab.is_available():
-            start_str = str(기간[0]) if len(기간) == 2 else "2024-01-01"
-            end_str = str(기간[1]) if len(기간) == 2 else "2026-05-01"
-            time_unit = "month" if 집계_q == "월간" else "week"
+            start_str = str(기간[0])
+            end_str = str(기간[1])
+            time_unit = "month"
             trend_df = naver_datalab.fetch_trend(own_keywords, start_str, end_str, time_unit)
             if not trend_df.empty:
                 fig = px.line(trend_df, x="period", y="ratio", color="keyword", markers=True,
@@ -756,19 +759,28 @@ def page_query():
 
         if naver_searchad.is_available():
             st.markdown('<div class="section-header">📈 월간 검색량</div>', unsafe_allow_html=True)
-            stats_df = naver_searchad.get_keyword_stats(own_keywords)
-            if not stats_df.empty:
+            with st.spinner("검색량 조회 중..."):
+                stats_df = naver_searchad.get_keyword_stats(own_keywords)
+            if not stats_df.empty and "relKeyword" in stats_df.columns:
+                # 입력 키워드만 필터
+                kw_lower = set(k.lower() for k in own_keywords)
+                filtered_stats = stats_df[stats_df["relKeyword"].str.lower().isin(kw_lower)].copy()
+                if filtered_stats.empty:
+                    filtered_stats = stats_df.head(len(own_keywords))
                 display_cols = ["relKeyword", "monthlyPcQcCnt", "monthlyMobileQcCnt"]
-                existing = [c for c in display_cols if c in stats_df.columns]
+                existing = [c for c in display_cols if c in filtered_stats.columns]
                 if existing:
-                    show_df = stats_df[existing].copy()
+                    show_df = filtered_stats[existing].copy()
                     show_df.columns = ["키워드", "PC 검색량", "모바일 검색량"][:len(existing)]
                     if "PC 검색량" in show_df.columns and "모바일 검색량" in show_df.columns:
-                        chart_df = show_df.melt(id_vars="키워드", var_name="구분", value_name="검색량")
+                        show_df["총 검색량"] = show_df["PC 검색량"] + show_df["모바일 검색량"]
+                        chart_df = show_df.melt(id_vars="키워드", value_vars=["PC 검색량", "모바일 검색량"], var_name="구분", value_name="검색량")
                         fig_bar = px.bar(chart_df, x="키워드", y="검색량", color="구분", barmode="group")
                         fig_bar.update_layout(height=350, plot_bgcolor="rgba(0,0,0,0)")
                         st.plotly_chart(fig_bar, use_container_width=True)
                     st.dataframe(show_df, hide_index=True, use_container_width=True)
+            else:
+                st.info("검색량 데이터가 없습니다.")
         else:
             st.info("🔑 네이버 검색광고 API 키를 설정하면 월간 검색량을 확인할 수 있습니다.")
 
@@ -826,19 +838,12 @@ def page_query():
         if 선택_키워드:
             st.markdown("**키워드별 수요 트렌드**")
             kw_filtered = df[(df["국가"] == 선택국가) & (df["키워드"].isin(선택_키워드))]
-            if 집계_q == "월간":
-                kw_trend = kw_filtered.groupby(["키워드", "연월"])["쿼리수"].sum().reset_index()
-                kw_trend["연월_str"] = kw_trend["연월"].astype(str)
-                kw_trend = kw_trend.sort_values(["키워드", "연월_str"])
-                fig_kw = px.line(kw_trend, x="연월_str", y="쿼리수", color="키워드", markers=True,
-                                 labels={"연월_str": "연월", "쿼리수": "쿼리 수"})
-                fig_kw.update_xaxes(tickangle=-45)
-            else:
-                kw_trend = kw_filtered.groupby(["키워드", "주차시작일"])["쿼리수"].sum().reset_index()
-                kw_trend = kw_trend.sort_values(["키워드", "주차시작일"])
-                fig_kw = px.line(kw_trend, x="주차시작일", y="쿼리수", color="키워드", markers=True,
-                                 labels={"주차시작일": "주차", "쿼리수": "쿼리 수"})
-                fig_kw.update_xaxes(tickangle=-45)
+            kw_trend = kw_filtered.groupby(["키워드", "연월"])["쿼리수"].sum().reset_index()
+            kw_trend["연월_str"] = kw_trend["연월"].astype(str)
+            kw_trend = kw_trend.sort_values(["키워드", "연월_str"])
+            fig_kw = px.line(kw_trend, x="연월_str", y="쿼리수", color="키워드", markers=True,
+                             labels={"연월_str": "연월", "쿼리수": "쿼리 수"})
+            fig_kw.update_xaxes(tickangle=-45)
 
             fig_kw.update_layout(
                 height=380, margin=dict(l=0, r=0, t=20, b=0),
@@ -896,9 +901,9 @@ def page_query():
         st.markdown('<div class="section-header">📊 자사 vs 경쟁사 검색 트렌드 비교</div>', unsafe_allow_html=True)
 
         if naver_datalab.is_available():
-            start_str = str(기간[0]) if len(기간) == 2 else "2024-01-01"
-            end_str = str(기간[1]) if len(기간) == 2 else "2026-05-01"
-            time_unit = "month" if 집계_q == "월간" else "week"
+            start_str = str(기간[0])
+            end_str = str(기간[1])
+            time_unit = "month"
             trend_df = naver_datalab.fetch_trend(all_kw, start_str, end_str, time_unit)
             if not trend_df.empty:
                 # 자사/경쟁사 구분 추가
@@ -1012,9 +1017,10 @@ def page_price():
         return
 
     # 실제 API 호출
-    items = naver_shopping.search_shopping(query, display=100, sort=sort_map.get(sort_opt, "sim"))
+    with st.spinner("네이버 쇼핑 검색 중..."):
+        items = naver_shopping.search_shopping(query, display=100, sort=sort_map.get(sort_opt, "sim"))
     if not items:
-        st.warning("검색 결과가 없습니다.")
+        st.warning("검색 결과가 없습니다. 네이버 개발자센터에서 '검색' API 권한이 활성화되어 있는지 확인해주세요.")
         return
 
     # 자사/경쟁사 분류
@@ -1136,7 +1142,73 @@ def _render_price_analysis(results_df, own_malls, competitors):
 
 
 # ====================================================================
-#  메뉴 4: 설정
+#  메뉴 4: 키워드 발굴
+# ====================================================================
+def page_discover():
+    st.markdown("""
+    <div class="top-banner">
+        <div class="banner-icon">🔎</div>
+        <div class="banner-text">
+            <h2>신규 키워드 발굴</h2>
+            <p>검색광고 API를 통해 연관 키워드를 자동 조회하고 키워드 DB에 추가합니다.</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    seed_kw = st.text_input("시드 키워드", placeholder="예: 일본여행", key="newkw_seed")
+
+    if st.button("🔍 연관 키워드 조회", key="newkw_search", use_container_width=False) and seed_kw:
+        if naver_searchad.is_available():
+            with st.spinner("연관 키워드 조회 중..."):
+                stats_df = naver_searchad.get_keyword_stats([seed_kw])
+            if not stats_df.empty:
+                col_mapping = {
+                    "relKeyword": "키워드",
+                    "monthlyPcQcCnt": "PC 검색량",
+                    "monthlyMobileQcCnt": "모바일 검색량",
+                    "compIdx": "경쟁강도",
+                }
+                display_cols = [c for c in col_mapping if c in stats_df.columns]
+                show_df = stats_df[display_cols].copy().rename(columns=col_mapping)
+                if "PC 검색량" in show_df.columns and "모바일 검색량" in show_df.columns:
+                    show_df["총 검색량"] = show_df["PC 검색량"] + show_df["모바일 검색량"]
+                    show_df = show_df.sort_values("총 검색량", ascending=False)
+
+                st.dataframe(show_df, hide_index=True, use_container_width=True, height=500)
+
+                # 원클릭 추가
+                st.markdown("---")
+                kw_data = load_json("trend_keywords.json")
+                categories = ["자사", "경쟁사", "시즌"]
+                country_kw = kw_data.get("국가별", {})
+                categories.extend([f"국가별/{c}" for c in sorted(country_kw.keys())])
+
+                c1, c2, c3 = st.columns([2, 2, 1])
+                with c1:
+                    add_kws = st.multiselect("추가할 키워드", show_df["키워드"].tolist() if "키워드" in show_df.columns else [], key="newkw_add_list")
+                with c2:
+                    target_cat = st.selectbox("추가 대상 카테고리", categories, key="newkw_target")
+                with c3:
+                    st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)
+                    if st.button("➕ 추가", key="newkw_add_btn") and add_kws:
+                        if "/" in target_cat:
+                            _, country = target_cat.split("/", 1)
+                            kw_data["국가별"][country].extend(add_kws)
+                        else:
+                            if target_cat not in kw_data:
+                                kw_data[target_cat] = []
+                            kw_data[target_cat].extend(add_kws)
+                        save_json("trend_keywords.json", kw_data)
+                        st.success(f"{len(add_kws)}개 키워드를 {target_cat}에 추가했습니다!")
+                        st.rerun()
+            else:
+                st.warning("결과가 없습니다.")
+        else:
+            st.warning("🔑 네이버 검색광고 API 키를 설정해주세요.")
+
+
+# ====================================================================
+#  메뉴 5: 설정
 # ====================================================================
 def page_settings():
     st.markdown("""
@@ -1149,8 +1221,8 @@ def page_settings():
     </div>
     """, unsafe_allow_html=True)
 
-    tab_company, tab_kw, tab_newkw, tab_api, tab_country = st.tabs([
-        "🏢 자사/경쟁사 관리", "📝 키워드 관리", "🔎 신규 키워드 발굴",
+    tab_company, tab_kw, tab_api, tab_country = st.tabs([
+        "🏢 자사/경쟁사 관리", "📝 키워드 관리",
         "🔑 API 키 관리", "🌍 국가/지역 관리",
     ])
 
@@ -1212,7 +1284,7 @@ def page_settings():
         competitors = company_info.get("경쟁사", [])
 
         for idx, comp in enumerate(competitors):
-            with st.expander(f"▼ {comp['name']}", expanded=False):
+            with st.expander(comp['name'], expanded=False):
                 st.markdown(f"**쇼핑몰명**: {' · '.join([f'`{m}`' for m in comp.get('mall_names', [])])}")
                 st.markdown(f"**브랜드 키워드**: {' · '.join([f'`{k}`' for k in comp.get('brand_keywords', [])])}")
 
@@ -1365,70 +1437,7 @@ def page_settings():
                 st.rerun()
 
     # ── 탭3: 신규 키워드 발굴 ──────────────────────
-    with tab_newkw:
-        st.markdown("### 🔎 신규 키워드 발굴")
-        st.markdown("검색광고 API를 통해 연관 키워드를 자동 조회합니다.")
-
-        seed_kw = st.text_input("시드 키워드", placeholder="예: 일본여행", key="newkw_seed")
-
-        if st.button("🔍 연관 키워드 조회", key="newkw_search") and seed_kw:
-            if naver_searchad.is_available():
-                with st.spinner("연관 키워드 조회 중..."):
-                    stats_df = naver_searchad.get_keyword_stats([seed_kw])
-                if not stats_df.empty:
-                    display_cols = []
-                    col_mapping = {
-                        "relKeyword": "키워드",
-                        "monthlyPcQcCnt": "PC 검색량",
-                        "monthlyMobileQcCnt": "모바일 검색량",
-                        "compIdx": "경쟁강도",
-                    }
-                    for col, label in col_mapping.items():
-                        if col in stats_df.columns:
-                            display_cols.append(col)
-
-                    show_df = stats_df[display_cols].copy()
-                    show_df = show_df.rename(columns=col_mapping)
-                    if "PC 검색량" in show_df.columns and "모바일 검색량" in show_df.columns:
-                        show_df["총 검색량"] = show_df["PC 검색량"] + show_df["모바일 검색량"]
-                        show_df = show_df.sort_values("총 검색량", ascending=False)
-
-                    st.dataframe(show_df, hide_index=True, use_container_width=True, height=500)
-
-                    # 원클릭 추가
-                    st.markdown("---")
-                    kw_data = load_json("trend_keywords.json")
-                    categories = ["자사", "경쟁사", "시즌"]
-                    country_kw = kw_data.get("국가별", {})
-                    categories.extend([f"국가별/{c}" for c in country_kw.keys()])
-
-                    c1, c2, c3 = st.columns([2, 2, 1])
-                    with c1:
-                        if "키워드" in show_df.columns:
-                            add_kws = st.multiselect("추가할 키워드", show_df["키워드"].tolist(), key="newkw_add_list")
-                        else:
-                            add_kws = []
-                    with c2:
-                        target_cat = st.selectbox("추가 대상 카테고리", categories, key="newkw_target")
-                    with c3:
-                        st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)
-                        if st.button("➕ 추가", key="newkw_add_btn") and add_kws:
-                            if "/" in target_cat:
-                                _, country = target_cat.split("/", 1)
-                                kw_data["국가별"][country].extend(add_kws)
-                            else:
-                                if target_cat not in kw_data:
-                                    kw_data[target_cat] = []
-                                kw_data[target_cat].extend(add_kws)
-                            save_json("trend_keywords.json", kw_data)
-                            st.success(f"{len(add_kws)}개 키워드를 {target_cat}에 추가했습니다!")
-                            st.rerun()
-                else:
-                    st.warning("결과가 없습니다.")
-            else:
-                st.warning("🔑 네이버 검색광고 API 키를 설정해주세요.")
-
-    # ── 탭4: API 키 관리 ───────────────────────────
+    # ── 탭3: API 키 관리 ───────────────────────────
     with tab_api:
         st.markdown("### 🔑 API 키 관리")
         st.info("`.env` 파일에 설정된 키가 우선 적용됩니다. 아래에서 세션 중 오버라이드할 수 있습니다.")
@@ -1558,5 +1567,7 @@ elif pg == "query":
     page_query()
 elif pg == "price":
     page_price()
+elif pg == "discover":
+    page_discover()
 elif pg == "settings":
     page_settings()

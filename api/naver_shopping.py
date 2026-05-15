@@ -45,6 +45,8 @@ def search_shopping(query, display=100, start=1, sort="sim"):
             params=params,
             timeout=10,
         )
+        if resp.status_code != 200:
+            print(f"[Shopping API Error] status={resp.status_code}, body={resp.text[:200]}")
         resp.raise_for_status()
         data = resp.json()
         items = data.get("items", [])
