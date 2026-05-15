@@ -1329,112 +1329,83 @@ def page_settings():
             st.success(f"{add_comp_name} 추가 완료!")
             st.rerun()
 
-    # ── 탭2: 키워드 관리 ───────────────────────────
+    # ── 탭2: 키워드 관리 (CKD 패턴: form + checkbox 삭제) ──
     with tab_kw:
         kw_data = load_json("trend_keywords.json")
 
-        def _parse_keywords(text):
-            """쉼표, 줄바꿈, 세미콜론으로 키워드 분리."""
-            import re
-            items = re.split(r"[,;\n\r]+", text)
-            return [k.strip() for k in items if k.strip()]
-
-        def _render_keyword_section(section_key, keywords, kw_data, prefix):
-            """키워드 섹션 렌더: expander 안에서 태그 표시, 쉼표/줄바꿈 추가, 체크박스 삭제."""
-            # 키워드 태그 표시
-            if keywords:
-                tag_html = " ".join([
-                    f'<span style="display:inline-block;background:#eef;border-radius:12px;padding:4px 12px;margin:3px;font-size:13px;">{k}</span>'
-                    for k in keywords
-                ])
-                st.markdown(tag_html, unsafe_allow_html=True)
-            else:
-                st.caption("(등록된 키워드 없음)")
-
-            # 추가 (쉼표/줄바꿈 지원)
-            new_kw_text = st.text_area(
-                "키워드 추가 (쉼표, 줄바꿈으로 여러 개 입력)",
-                height=68, key=f"kw_add_{prefix}",
-                placeholder="예: 일본여행, 오사카여행\n도쿄여행",
-            )
-            if st.button("➕ 추가", key=f"kw_btn_{prefix}") and new_kw_text:
-                new_items = _parse_keywords(new_kw_text)
-                added = [k for k in new_items if k not in keywords]
-                if added:
-                    keywords.extend(added)
-                    _save_kw_section(section_key, keywords, kw_data)
-                    st.success(f"{len(added)}개 추가: {', '.join(added)}")
-                    st.rerun()
-                else:
-                    st.warning("이미 등록된 키워드입니다.")
-
-            # 체크박스 일괄 삭제
-            if keywords:
-                st.markdown("**삭제할 키워드 선택:**")
-                del_targets = []
-                cols = st.columns(min(len(keywords), 4))
-                for i, kw in enumerate(keywords):
-                    with cols[i % len(cols)]:
-                        if st.checkbox(kw, key=f"kw_chk_{prefix}_{i}"):
-                            del_targets.append(kw)
-                if del_targets and st.button(f"🗑️ 선택 삭제 ({len(del_targets)}개)", key=f"kw_del_{prefix}"):
-                    for k in del_targets:
-                        keywords.remove(k)
-                    _save_kw_section(section_key, keywords, kw_data)
-                    st.success(f"{len(del_targets)}개 삭제 완료")
-                    st.rerun()
-
-        def _save_kw_section(section_key, keywords, kw_data):
-            if "/" in section_key:
-                _, country = section_key.split("/", 1)
-                kw_data["국가별"][country] = keywords
-            else:
-                kw_data[section_key] = keywords
+        def _save_kw(kw_data):
             save_json("trend_keywords.json", kw_data)
 
-        # 일반 카테고리
-        for category in ["자사", "시즌"]:
-            with st.expander(f"📂 {category} 키워드 ({len(kw_data.get(category, []))}개)", expanded=False):
-                keywords = kw_data.get(category, [])
-                if isinstance(keywords, list):
-                    _render_keyword_section(category, keywords, kw_data, category)
+        def _render_kw_section(cat_key, keywords, kw_data, prefix):
+            """CKD 패턴: 태그 표시 → form으로 추가 → form으로 체크박스 삭제"""
+            import re
+            # 현재 키워드 태그 표시
+            if keywords:
+                st.markdown(" · ".join(f"`{kw}`" for kw in keywords))
+            else:
+                st.caption("키워드 없음")
 
-        # 경쟁사: 브랜드별로 구분
-        company_info = load_json("company_info.json")
-        competitors = company_info.get("경쟁사", [])
-        with st.expander(f"📂 경쟁사 키워드 ({len(kw_data.get('경쟁사', []))}개)", expanded=False):
-            comp_kw = kw_data.get("경쟁사", [])
-            # 브랜드별 선택 필터
-            if competitors:
-                brand_options = ["전체"] + [c["name"] for c in competitors]
-                선택_브랜드 = st.selectbox("브랜드별 필터", brand_options, key="kw_comp_brand")
-                if 선택_브랜드 != "전체":
-                    selected_comp = next((c for c in competitors if c["name"] == 선택_브랜드), None)
-                    if selected_comp:
-                        brand_kw = selected_comp.get("brand_keywords", [])
-                        st.caption(f"{선택_브랜드} 등록 키워드: {', '.join(brand_kw) if brand_kw else '없음'}")
-            _render_keyword_section("경쟁사", comp_kw, kw_data, "경쟁사")
+            # 추가 form
+            with st.form(f"kwadd_{prefix}"):
+                new_text = st.text_area("추가할 키워드 (쉼표/줄바꿈 구분)", height=60, key=f"kwinput_{prefix}")
+                if st.form_submit_button("추가", type="primary"):
+                    parsed = [k.strip() for k in re.split(r"[,;\n\r]+", new_text) if k.strip()]
+                    added = [k for k in parsed if k not in keywords]
+                    if added:
+                        keywords.extend(added)
+                        if "/" in cat_key:
+                            _, country = cat_key.split("/", 1)
+                            kw_data["국가별"][country] = keywords
+                        else:
+                            kw_data[cat_key] = keywords
+                        _save_kw(kw_data)
+                        st.rerun()
+
+            # 삭제 form (체크박스 선택)
+            if keywords:
+                with st.form(f"kwdel_{prefix}"):
+                    st.caption("삭제할 키워드를 선택하세요:")
+                    checks = {}
+                    cols = st.columns(min(len(keywords), 4))
+                    for i, kw in enumerate(keywords):
+                        with cols[i % len(cols)]:
+                            checks[kw] = st.checkbox(kw, key=f"kwchk_{prefix}_{kw}")
+                    if st.form_submit_button("선택 삭제"):
+                        to_del = [kw for kw, v in checks.items() if v]
+                        if to_del:
+                            remaining = [k for k in keywords if k not in to_del]
+                            if "/" in cat_key:
+                                _, country = cat_key.split("/", 1)
+                                kw_data["국가별"][country] = remaining
+                            else:
+                                kw_data[cat_key] = remaining
+                            _save_kw(kw_data)
+                            st.rerun()
+
+        # 일반 카테고리
+        for category in ["자사", "경쟁사", "시즌"]:
+            keywords = kw_data.get(category, [])
+            with st.expander(f"📁 {category} ({len(keywords)}개)", expanded=False):
+                _render_kw_section(category, keywords, kw_data, category)
 
         # 국가별 키워드
         country_kw = kw_data.get("국가별", {})
         for country in sorted(country_kw.keys()):
             keywords = country_kw[country]
             with st.expander(f"🌍 {country} ({len(keywords)}개)", expanded=False):
-                _render_keyword_section(f"국가별/{country}", keywords, kw_data, f"country_{country}")
+                _render_kw_section(f"국가별/{country}", keywords, kw_data, f"c_{country}")
 
         # 국가 추가
         st.markdown("---")
-        c1, c2 = st.columns([3, 1])
-        with c1:
-            new_country = st.text_input("새 국가 카테고리 추가", key="kw_new_country")
-        with c2:
-            st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)
-            if st.button("추가", key="kw_btn_new_country") and new_country:
-                if "국가별" not in kw_data:
-                    kw_data["국가별"] = {}
-                kw_data["국가별"][new_country] = []
-                save_json("trend_keywords.json", kw_data)
-                st.rerun()
+        with st.form("kw_add_country"):
+            new_country = st.text_input("새 국가 카테고리 추가")
+            if st.form_submit_button("추가"):
+                if new_country:
+                    if "국가별" not in kw_data:
+                        kw_data["국가별"] = {}
+                    kw_data["국가별"][new_country] = []
+                    _save_kw(kw_data)
+                    st.rerun()
 
     # ── 탭3: 신규 키워드 발굴 ──────────────────────
     # ── 탭3: API 키 관리 ───────────────────────────
