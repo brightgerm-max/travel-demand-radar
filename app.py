@@ -756,8 +756,13 @@ def page_query():
                 trend_df = naver_datalab.fetch_trend(selected_own, start_str, end_str, time_unit="month")
                 if not trend_df.empty:
                     fig = px.line(trend_df, x="period", y="ratio", color="keyword", markers=True,
-                                  labels={"period": "기간", "ratio": "검색 비율", "keyword": "키워드"})
-                    fig.update_layout(height=400, plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
+                                  labels={"period": "", "ratio": "", "keyword": "키워드"})
+                    fig.update_layout(
+                        height=400, margin=dict(t=30, b=40),
+                        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+                        xaxis=dict(title=""), yaxis=dict(title="", tickformat=","),
+                    )
                     st.plotly_chart(fig, use_container_width=True)
                 else:
                     st.info("트렌드 데이터가 없습니다.")
@@ -782,8 +787,14 @@ def page_query():
                     if "PC 검색량" in show_df.columns and "모바일 검색량" in show_df.columns:
                         show_df["총 검색량"] = show_df["PC 검색량"] + show_df["모바일 검색량"]
                         chart_df = show_df.melt(id_vars="키워드", value_vars=["PC 검색량", "모바일 검색량"], var_name="구분", value_name="검색량")
-                        fig_bar = px.bar(chart_df, x="키워드", y="검색량", color="구분", barmode="group")
-                        fig_bar.update_layout(height=350, plot_bgcolor="rgba(0,0,0,0)")
+                        fig_bar = px.bar(chart_df, x="키워드", y="검색량", color="구분", barmode="group",
+                                         labels={"키워드": "", "검색량": ""})
+                        fig_bar.update_layout(
+                            height=350, margin=dict(t=30, b=40),
+                            plot_bgcolor="rgba(0,0,0,0)",
+                            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+                            yaxis=dict(tickformat=","),
+                        )
                         st.plotly_chart(fig_bar, use_container_width=True)
                     st.dataframe(show_df, hide_index=True, use_container_width=True)
 
@@ -845,13 +856,13 @@ def page_query():
             kw_trend["연월_str"] = kw_trend["연월"].astype(str)
             kw_trend = kw_trend.sort_values(["키워드", "연월_str"])
             fig_kw = px.line(kw_trend, x="연월_str", y="쿼리수", color="키워드", markers=True,
-                             labels={"연월_str": "연월", "쿼리수": "쿼리 수"})
+                             labels={"연월_str": "", "쿼리수": ""})
             fig_kw.update_xaxes(tickangle=-45)
 
             fig_kw.update_layout(
-                height=380, margin=dict(l=0, r=0, t=20, b=0),
+                height=400, margin=dict(l=0, r=0, t=30, b=40),
                 plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
                 xaxis=dict(gridcolor="rgba(0,0,0,0.05)"),
                 yaxis=dict(gridcolor="rgba(0,0,0,0.08)", tickformat=","),
             )
@@ -935,8 +946,13 @@ def page_query():
                     trend_df["구분"] = trend_df["keyword"].apply(lambda x: "자사" if x in own_kw else "경쟁사")
                     fig = px.line(trend_df, x="period", y="ratio", color="keyword",
                                   line_dash="구분", markers=True,
-                                  labels={"period": "기간", "ratio": "검색 비율", "keyword": "키워드"})
-                    fig.update_layout(height=400, plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
+                                  labels={"period": "", "ratio": "", "keyword": "키워드"})
+                    fig.update_layout(
+                        height=400, margin=dict(t=30, b=40),
+                        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+                        xaxis=dict(title=""), yaxis=dict(title="", tickformat=","),
+                    )
                     st.plotly_chart(fig, use_container_width=True)
 
                     # 점유율 파이차트
