@@ -302,55 +302,53 @@ def page_forecast():
     all_mapped_countries = sorted(country_map.keys())
     국가_목록 = csv_countries + [c for c in all_mapped_countries if c not in csv_countries]
 
-    if "fc_select_all" not in st.session_state:
-        st.session_state["fc_select_all"] = True
+    # session_state로 국가 선택 관리
+    if "fc_countries_val" not in st.session_state:
+        st.session_state["fc_countries_val"] = 국가_목록.copy()
 
-    st.markdown('<div class="filter-bar">', unsafe_allow_html=True)
-
-    # 1행: 연도 + 국가 + 집계
-    r1c1, r1c2, r1c3 = st.columns([1, 5, 1])
-    with r1c1:
-        연도_목록 = sorted(df["연도"].unique())
-        선택_연도 = st.selectbox("연도", 연도_목록, index=len(연도_목록)-1, key="fc_year")
-    with r1c2:
-        btn1, btn2, _ = st.columns([1, 1, 6])
-        with btn1:
+    with st.container(border=True):
+        # 1행: 연도 + 전체선택/해제
+        r1c1, r1c2, r1c3, r1c4 = st.columns([1.5, 0.8, 0.8, 5])
+        with r1c1:
+            연도_목록 = sorted(df["연도"].unique())
+            선택_연도 = st.selectbox("연도", 연도_목록, index=len(연도_목록)-1, key="fc_year")
+        with r1c2:
+            st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
             if st.button("전체 선택", key="fc_sel_all", use_container_width=True):
-                st.session_state["fc_select_all"] = True
+                st.session_state["fc_countries_val"] = 국가_목록.copy()
                 st.rerun()
-        with btn2:
+        with r1c3:
+            st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
             if st.button("전체 해제", key="fc_sel_none", use_container_width=True):
-                st.session_state["fc_select_all"] = False
+                st.session_state["fc_countries_val"] = []
                 st.rerun()
-        default_countries = 국가_목록 if st.session_state["fc_select_all"] else []
-        선택_국가 = st.multiselect("국가", 국가_목록, default=default_countries, key="fc_countries")
-    with r1c3:
-        집계 = st.radio("집계", ["월간", "주간"], key="fc_agg")
 
-    # 2행: 월 선택 (체크박스)
-    월_labels = [f"{m}월" for m in range(1, 13)]
-    st.markdown('<div style="font-size:13px;font-weight:600;color:#444;margin:8px 0 4px 0;">월 선택</div>', unsafe_allow_html=True)
-    월_cols = st.columns(12)
-    선택_월 = []
-    for i, col in enumerate(월_cols):
-        with col:
-            if st.checkbox(월_labels[i], value=True, key=f"fc_m{i+1}"):
-                선택_월.append(i + 1)
+        # 2행: 국가 선택 (전체 너비)
+        선택_국가 = st.multiselect(
+            "국가", 국가_목록,
+            default=st.session_state["fc_countries_val"],
+            key="fc_countries",
+        )
+        st.session_state["fc_countries_val"] = 선택_국가
 
-    # 선택 요약 뱃지
-    if 선택_월:
-        월_text = ", ".join([f"{m}월" for m in 선택_월]) if len(선택_월) <= 4 else f"{len(선택_월)}개월"
-    else:
-        월_text = "없음"
-    st.markdown(f"""
-    <div class="filter-summary">
-        <span class="badge">{len(선택_국가)}개국</span>
-        <span class="badge">{선택_연도}년</span>
-        <span class="badge">{월_text}</span>
-        <span class="badge">{집계}</span>
-    </div>
-    """, unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+        # 3행: 월 선택 (체크박스)
+        st.caption("월 선택")
+        월_cols = st.columns(12)
+        선택_월 = []
+        for i, col in enumerate(월_cols):
+            with col:
+                if st.checkbox(f"{i+1}월", value=True, key=f"fc_m{i+1}"):
+                    선택_월.append(i + 1)
+
+        # 요약
+        월_cnt = len(선택_월)
+        st.markdown(f"""
+        <div class="filter-summary">
+            <span class="badge">{len(선택_국가)}개국</span>
+            <span class="badge">{선택_연도}년</span>
+            <span class="badge">{월_cnt}개월</span>
+        </div>
+        """, unsafe_allow_html=True)
 
     if not 선택_국가:
         st.warning("국가를 1개 이상 선택해주세요.")
@@ -490,20 +488,39 @@ def page_forecast():
     map_data = country_query[country_query["iso_alpha3"] != ""]
 
     if not map_data.empty:
-        fig_map = px.choropleth(
-            map_data,
-            locations="iso_alpha3",
-            color="demand_score",
-            hover_name="국가",
-            hover_data={"쿼리수": ":,", "demand_score": ":.1f", "iso_alpha3": False},
-            color_continuous_scale="YlOrRd",
-            projection="natural earth",
-            labels={"demand_score": "수요 점수", "쿼리수": "검색량"},
-        )
+        fig_map = go.Figure(data=go.Choropleth(
+            locations=map_data["iso_alpha3"],
+            z=map_data["demand_score"],
+            text=map_data["국가"],
+            customdata=np.stack([map_data["쿼리수"], map_data["demand_score"]], axis=-1),
+            hovertemplate="<b>%{text}</b><br>수요 점수: %{customdata[1]:.1f}<br>검색량: %{customdata[0]:,.0f}<extra></extra>",
+            colorscale=[
+                [0, "#e8eaf6"], [0.2, "#7986cb"], [0.4, "#5c6bc0"],
+                [0.6, "#3f51b5"], [0.8, "#e65100"], [1, "#ff6d00"],
+            ],
+            autocolorscale=False,
+            marker_line_color="rgba(255,255,255,0.6)",
+            marker_line_width=0.5,
+            colorbar=dict(
+                title=dict(text="수요 점수", font=dict(size=12)),
+                thickness=12, len=0.6, tickformat=".0f",
+                bgcolor="rgba(255,255,255,0.8)", borderwidth=0,
+            ),
+        ))
         fig_map.update_layout(
-            height=450, margin=dict(l=0, r=0, t=0, b=0),
-            geo=dict(showframe=False, showcoastlines=True, coastlinecolor="rgba(0,0,0,0.1)"),
-            coloraxis_colorbar=dict(title="수요 점수", tickformat=".0f"),
+            height=480, margin=dict(l=0, r=0, t=0, b=0),
+            geo=dict(
+                showframe=False,
+                showcoastlines=True, coastlinecolor="rgba(180,180,200,0.4)", coastlinewidth=0.5,
+                showland=True, landcolor="#f0f0f5",
+                showocean=True, oceancolor="#fafbff",
+                showlakes=True, lakecolor="#fafbff",
+                showcountries=True, countrycolor="rgba(200,200,220,0.3)", countrywidth=0.3,
+                projection_type="natural earth",
+                bgcolor="rgba(0,0,0,0)",
+            ),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
         )
         st.plotly_chart(fig_map, use_container_width=True)
 
@@ -556,40 +573,29 @@ def page_forecast():
     col_chart, col_rank = st.columns([3, 1])
 
     with col_chart:
-        if 집계 == "월간":
-            보기방식 = st.radio("보기 방식", ["누적", "추이"], horizontal=True, key="fc_trend_mode")
-            if 보기방식 == "누적":
-                trend = filtered.groupby(["국가", "월"])["쿼리수"].sum().reset_index()
-                선택_월_정렬 = [f"{m}월" for m in sorted(선택_월)]
-                trend["월표시"] = pd.Categorical(
-                    trend["월"].astype(str) + "월", categories=선택_월_정렬, ordered=True
-                )
-                trend = trend.sort_values(["국가", "월표시"])
-                fig = px.line(
-                    trend, x="월표시", y="쿼리수", color="국가", markers=True,
-                    category_orders={"국가": 국가순위, "월표시": 선택_월_정렬},
-                    color_discrete_map=color_map,
-                    labels={"월표시": "월", "쿼리수": "쿼리 수"},
-                )
-            else:
-                trend = filtered.groupby(["국가", "연월"])["쿼리수"].sum().reset_index()
-                trend["연월_str"] = trend["연월"].astype(str)
-                trend = trend.sort_values(["국가", "연월_str"])
-                fig = px.line(
-                    trend, x="연월_str", y="쿼리수", color="국가", markers=True,
-                    category_orders={"국가": 국가순위},
-                    color_discrete_map=color_map,
-                    labels={"연월_str": "연월", "쿼리수": "쿼리 수"},
-                )
-                fig.update_xaxes(tickangle=-45)
-        else:
-            trend = filtered.groupby(["국가", "주차시작일"])["쿼리수"].sum().reset_index()
-            trend = trend.sort_values(["국가", "주차시작일"])
+        보기방식 = st.radio("보기 방식", ["누적", "추이"], horizontal=True, key="fc_trend_mode")
+        if 보기방식 == "누적":
+            trend = filtered.groupby(["국가", "월"])["쿼리수"].sum().reset_index()
+            선택_월_정렬 = [f"{m}월" for m in sorted(선택_월)]
+            trend["월표시"] = pd.Categorical(
+                trend["월"].astype(str) + "월", categories=선택_월_정렬, ordered=True
+            )
+            trend = trend.sort_values(["국가", "월표시"])
             fig = px.line(
-                trend, x="주차시작일", y="쿼리수", color="국가", markers=True,
+                trend, x="월표시", y="쿼리수", color="국가", markers=True,
+                category_orders={"국가": 국가순위, "월표시": 선택_월_정렬},
+                color_discrete_map=color_map,
+                labels={"월표시": "월", "쿼리수": "쿼리 수"},
+            )
+        else:
+            trend = filtered.groupby(["국가", "연월"])["쿼리수"].sum().reset_index()
+            trend["연월_str"] = trend["연월"].astype(str)
+            trend = trend.sort_values(["국가", "연월_str"])
+            fig = px.line(
+                trend, x="연월_str", y="쿼리수", color="국가", markers=True,
                 category_orders={"국가": 국가순위},
                 color_discrete_map=color_map,
-                labels={"주차시작일": "주차", "쿼리수": "쿼리 수"},
+                labels={"연월_str": "연월", "쿼리수": "쿼리 수"},
             )
             fig.update_xaxes(tickangle=-45)
 
