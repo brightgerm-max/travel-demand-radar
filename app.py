@@ -7,7 +7,21 @@ import json
 import os
 from pathlib import Path
 
-# ── .env 로드 (os.environ 직접) ─────────────────────
+# ── 환경변수 로드: st.secrets → .env → os.environ ───
+# 1) Streamlit Cloud Secrets (영구 저장, 최우선)
+_SECRET_KEYS = [
+    "NAVER_CLIENT_ID", "NAVER_CLIENT_SECRET",
+    "NAVER_SEARCHAD_API_KEY", "NAVER_SEARCHAD_SECRET_KEY", "NAVER_SEARCHAD_CUSTOMER_ID",
+    "PUBLIC_DATA_SERVICE_KEY",
+]
+try:
+    for _k in _SECRET_KEYS:
+        if _k in st.secrets:
+            os.environ.setdefault(_k, str(st.secrets[_k]))
+except Exception:
+    pass
+
+# 2) 로컬 .env 파일 (개발용)
 _env_path = Path(__file__).parent / ".env"
 if _env_path.exists():
     for line in _env_path.read_text(encoding="utf-8").splitlines():
