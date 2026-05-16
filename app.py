@@ -419,9 +419,9 @@ def page_forecast():
         return
 
     # ── 데이터 로드: API 우선, CSV fallback ───────
-    # 선택 국가의 키워드 가져오기
-    selected_kw = {c: country_kw.get(c, [f"{c}여행"]) for c in 선택_국가}
-    kw_tuple = tuple(sorted(selected_kw.items()))  # cache key용
+    # 전체 국가 키워드로 로드 (캐시 효율화 — 국가 체크 변경 시 재호출 방지)
+    all_kw = {c: country_kw.get(c, [f"{c}여행"]) for c in 국가_목록}
+    kw_tuple = tuple(sorted(all_kw.items()))  # cache key (전체 국가 고정)
 
     if use_api:
         # 검색광고 API로 월간 검색수
@@ -439,10 +439,10 @@ def page_forecast():
         trend_api_df = pd.DataFrame()
         trend_prev_df = pd.DataFrame()
 
-    # API 데이터 또는 CSV fallback
+    # API 데이터 또는 CSV fallback — 선택 국가만 필터
     if not search_df.empty:
-        # API 데이터로 국가별 검색량 집계
-        country_search = search_df.groupby("국가")["총검색수"].sum().reset_index()
+        search_filtered = search_df[search_df["국가"].isin(선택_국가)]
+        country_search = search_filtered.groupby("국가")["총검색수"].sum().reset_index()
         country_search.columns = ["국가", "검색량"]
         data_source = "API"
     else:
