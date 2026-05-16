@@ -916,8 +916,8 @@ def page_query():
             with st.spinner("검색량 조회 중..."):
                 stats_df = naver_searchad.get_keyword_stats(selected_own)
             if not stats_df.empty and "relKeyword" in stats_df.columns:
-                kw_lower = set(k.lower() for k in selected_own)
-                filtered_stats = stats_df[stats_df["relKeyword"].str.lower().isin(kw_lower)].copy()
+                kw_lower = set(k.lower().replace(" ", "") for k in selected_own)
+                filtered_stats = stats_df[stats_df["relKeyword"].str.lower().str.replace(" ", "", regex=False).isin(kw_lower)].copy()
                 if filtered_stats.empty:
                     filtered_stats = stats_df.head(len(selected_own))
                 display_cols = ["relKeyword", "monthlyPcQcCnt", "monthlyMobileQcCnt"]
@@ -1084,16 +1084,17 @@ def page_query():
             with st.spinner("검색량 조회 중..."):
                 stats_df = naver_searchad.get_keyword_stats(selected_comp_kw)
             if not stats_df.empty and "relKeyword" in stats_df.columns:
-                # 부분 매칭: 입력 키워드가 relKeyword에 포함되거나 그 반대
-                kw_input = [k.lower() for k in selected_comp_kw]
+                # 부분 매칭: 공백 제거 후 비교 (API도 공백 제거하여 반환)
+                kw_input = [k.lower().replace(" ", "") for k in selected_comp_kw]
                 def _match(rel):
-                    rel_l = rel.lower()
+                    rel_l = rel.lower().replace(" ", "")
                     return any(k in rel_l or rel_l in k for k in kw_input)
                 filtered_stats = stats_df[stats_df["relKeyword"].apply(_match)].copy()
                 if filtered_stats.empty:
                     filtered_stats = stats_df.head(len(selected_comp_kw))
+                own_kw_clean = [k.lower().replace(" ", "") for k in own_kw]
                 filtered_stats["구분"] = filtered_stats["relKeyword"].apply(
-                    lambda x: "자사" if any(k.lower() in x.lower() for k in own_kw) else "경쟁사"
+                    lambda x: "자사" if x.lower().replace(" ", "") in own_kw_clean else "경쟁사"
                 )
                 if "monthlyPcQcCnt" in filtered_stats.columns and "monthlyMobileQcCnt" in filtered_stats.columns:
                     filtered_stats["총검색량"] = filtered_stats["monthlyPcQcCnt"] + filtered_stats["monthlyMobileQcCnt"]
