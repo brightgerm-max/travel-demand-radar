@@ -1271,6 +1271,7 @@ def _render_price_analysis(results_df, own_malls, competitors):
     display_df = display_df.rename(columns=rename)
     if "가격" in display_df.columns:
         display_df["가격"] = display_df["가격"].apply(lambda x: f"₩{int(x):,}" if pd.notna(x) and x > 0 else "-")
+    display_df.insert(0, "순위", range(1, len(display_df) + 1))
     st.dataframe(display_df, hide_index=True, use_container_width=True, height=400)
 
     # 가격 분포 & 인사이트
