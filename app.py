@@ -1055,60 +1055,39 @@ def page_query():
 
         st.markdown('<div class="section-header">📊 자사 vs 경쟁사 검색 트렌드 비교</div>', unsafe_allow_html=True)
 
-        # 차트(좌) + 키워드 선택(우)
-        graph_col, filter_col = st.columns([3, 1])
+        # 키워드 필터 (multiselect, 차트 위)
+        selected_comp_kw = st.multiselect(
+            "비교할 키워드", all_kw, default=all_kw, key="q_comp_kw_sel",
+        )
 
-        with filter_col:
-            st.markdown("**키워드 선택**")
-            def _toggle_comp():
-                val = st.session_state.get("q_comp_all", True)
-                for kw in all_kw:
-                    st.session_state[f"q_comp_{kw}"] = val
-            st.checkbox("전체 선택/해제", value=True, key="q_comp_all", on_change=_toggle_comp)
-            for kw in all_kw:
-                if f"q_comp_{kw}" not in st.session_state:
-                    st.session_state[f"q_comp_{kw}"] = True
-            # 자사/경쟁사 구분 표시
-            st.caption("— 자사 —")
-            for kw in own_kw:
-                st.checkbox(kw, key=f"q_comp_{kw}")
-            st.caption("— 경쟁사 —")
-            for kw in comp_kw:
-                st.checkbox(kw, key=f"q_comp_{kw}")
-            selected_comp_kw = [kw for kw in all_kw if st.session_state.get(f"q_comp_{kw}", True)]
+        if not selected_comp_kw:
+            st.info("키워드를 1개 이상 선택해주세요.")
+        elif naver_datalab.is_available():
+            start_str, end_str = str(기간[0]), str(기간[1])
+            trend_df = naver_datalab.fetch_trend(selected_comp_kw, start_str, end_str, time_unit="month")
+            if not trend_df.empty:
+                trend_df["구분"] = trend_df["keyword"].apply(lambda x: "자사" if x in own_kw else "경쟁사")
+                fig = px.line(trend_df, x="period", y="ratio", color="keyword",
+                              line_dash="구분", markers=True,
+                              labels={"period": "", "ratio": "", "keyword": "키워드"})
+                fig.update_layout(
+                    height=400, margin=dict(t=30, b=40),
+                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+                    xaxis=dict(title=""), yaxis=dict(title="", tickformat=","),
+                )
+                st.plotly_chart(fig, use_container_width=True)
 
-        with graph_col:
-            if not selected_comp_kw:
-                st.info("키워드를 1개 이상 선택해주세요.")
-            elif naver_datalab.is_available():
-                start_str, end_str = str(기간[0]), str(기간[1])
-                trend_df = naver_datalab.fetch_trend(selected_comp_kw, start_str, end_str, time_unit="month")
-                if not trend_df.empty:
-                    trend_df["구분"] = trend_df["keyword"].apply(lambda x: "자사" if x in own_kw else "경쟁사")
-                    fig = px.line(trend_df, x="period", y="ratio", color="keyword",
-                                  line_dash="구분", markers=True,
-                                  labels={"period": "", "ratio": "", "keyword": "키워드"})
-                    fig.update_layout(
-                        height=400, margin=dict(t=30, b=40),
-                        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
-                        xaxis=dict(title=""), yaxis=dict(title="", tickformat=","),
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-
-                    # 점유율 파이차트
-                    st.markdown("**검색량 점유율**")
-                    share = trend_df.groupby("keyword")["ratio"].sum().reset_index()
-                    share.columns = ["키워드", "누적비율"]
-                    fig_pie = px.pie(share, names="키워드", values="누적비율", hole=0.4)
-                    fig_pie.update_layout(height=350)
-                    st.plotly_chart(fig_pie, use_container_width=True)
+        # 키워드별 월간 검색량 비교 테이블
         if naver_searchad.is_available() and selected_comp_kw:
             st.markdown('<div class="section-header">📈 키워드별 검색량 비교</div>', unsafe_allow_html=True)
-            stats_df = naver_searchad.get_keyword_stats(all_kw)
+            with st.spinner("검색량 조회 중..."):
+                stats_df = naver_searchad.get_keyword_stats(selected_comp_kw)
             if not stats_df.empty and "relKeyword" in stats_df.columns:
-                # 자사/경쟁사 매칭
-                filtered_stats = stats_df[stats_df["relKeyword"].isin(all_kw)].copy()
+                kw_lower = set(k.lower() for k in selected_comp_kw)
+                filtered_stats = stats_df[stats_df["relKeyword"].str.lower().isin(kw_lower)].copy()
+                if filtered_stats.empty:
+                    filtered_stats = stats_df.head(len(selected_comp_kw))
                 filtered_stats["구분"] = filtered_stats["relKeyword"].apply(
                     lambda x: "자사" if x in own_kw else "경쟁사"
                 )
