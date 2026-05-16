@@ -586,11 +586,27 @@ def page_forecast():
         return
 
     st.markdown('<div class="section-header">📈 수요 트렌드</div>', unsafe_allow_html=True)
-    col_chart, col_rank = st.columns([3, 1])
+    graph_col, filter_col = st.columns([3, 1])
 
-    with col_chart:
-        if not trend_api_df.empty:
-            trend_filtered = trend_api_df[trend_api_df["국가"].isin(데이터_국가)].copy()
+    # 우측: 국가 선택 필터
+    with filter_col:
+        st.markdown("**국가 필터**")
+        def _toggle_trend():
+            val = st.session_state.get("fc_trend_all", True)
+            for c in 데이터_국가:
+                st.session_state[f"fc_tc_{c}"] = val
+        st.checkbox("전체 선택/해제", value=True, key="fc_trend_all", on_change=_toggle_trend)
+        for c in 데이터_국가:
+            if f"fc_tc_{c}" not in st.session_state:
+                st.session_state[f"fc_tc_{c}"] = True
+            st.checkbox(c, key=f"fc_tc_{c}")
+        trend_선택_국가 = [c for c in 데이터_국가 if st.session_state.get(f"fc_tc_{c}", True)]
+
+    with graph_col:
+        if not trend_선택_국가:
+            st.info("국가를 1개 이상 선택해주세요.")
+        elif not trend_api_df.empty:
+            trend_filtered = trend_api_df[trend_api_df["국가"].isin(trend_선택_국가)].copy()
             if not trend_filtered.empty:
                 trend_filtered["period_str"] = trend_filtered["period"].dt.strftime("%Y-%m")
                 # 선택 월 필터
@@ -615,14 +631,14 @@ def page_forecast():
         else:
             st.info("트렌드 API 데이터를 불러올 수 없습니다.")
 
-    with col_rank:
-        st.markdown("**🏅 국가 순위**")
-        rank = country_search[country_search["검색량"] > 0].sort_values("검색량", ascending=False).copy()
-        rank.columns = ["국가", "검색량"]
-        rank["검색량"] = rank["검색량"].apply(lambda x: f"{int(x):,}")
-        rank.index = range(1, len(rank) + 1)
-        rank.index.name = "순위"
-        st.dataframe(rank, use_container_width=True, height=420)
+    # 국가 순위 테이블
+    st.markdown("**🏅 국가 순위**")
+    rank = country_search[country_search["검색량"] > 0].sort_values("검색량", ascending=False).copy()
+    rank.columns = ["국가", "검색량"]
+    rank["검색량"] = rank["검색량"].apply(lambda x: f"{int(x):,}")
+    rank.index = range(1, len(rank) + 1)
+    rank.index.name = "순위"
+    st.dataframe(rank, use_container_width=True, height=300)
 
     st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
 
@@ -630,14 +646,15 @@ def page_forecast():
     if not search_df.empty:
         st.markdown('<div class="section-header">🔥 국가별 키워드 검색량</div>', unsafe_allow_html=True)
 
-        # 국가별 키워드 검색량 히트맵
-        heat_data_api = search_df[search_df["국가"].isin(데이터_국가)].copy()
+        # 국가별 키워드 검색량 히트맵 (trend 필터 연동)
+        heat_국가 = trend_선택_국가 if trend_선택_국가 else 데이터_국가
+        heat_data_api = search_df[search_df["국가"].isin(heat_국가)].copy()
         if not heat_data_api.empty:
             heat_pivot = heat_data_api.pivot_table(
                 index="국가", columns="키워드", values="총검색수", aggfunc="sum"
             ).fillna(0)
             # 국가순위대로 정렬
-            heat_pivot = heat_pivot.reindex(index=[c for c in 데이터_국가 if c in heat_pivot.index])
+            heat_pivot = heat_pivot.reindex(index=[c for c in heat_국가 if c in heat_pivot.index])
 
             text_display = []
             for row in heat_pivot.values:
@@ -685,16 +702,24 @@ def page_forecast():
 
     for country in 데이터_국가:
         # 올해 데이터
-        c_cur = trend_api_df[trend_api_df["국가"] == country].sort_values("period")
+        c_cur = trend_api_df[trend_api_df["국가"] == country].copy()
         if c_cur.empty:
             continue
+        c_cur["period"] = pd.to_datetime(c_cur["period"], errors="coerce")
+        c_cur = c_cur.dropna(subset=["period"]).sort_values("period")
         c_vals = c_cur["ratio"].values
-        c_months = c_cur["period"].dt.month.values if "period" in c_cur.columns else []
+        c_months = c_cur["period"].dt.month.values
 
         # 전년 데이터
-        c_prev = trend_prev_df[trend_prev_df["국가"] == country].sort_values("period") if not trend_prev_df.empty else pd.DataFrame()
-        prev_vals = c_prev["ratio"].values if not c_prev.empty else np.array([])
-        prev_months = c_prev["period"].dt.month.values if not c_prev.empty and "period" in c_prev.columns else np.array([])
+        c_prev = trend_prev_df[trend_prev_df["국가"] == country].copy() if not trend_prev_df.empty else pd.DataFrame()
+        if not c_prev.empty and "period" in c_prev.columns:
+            c_prev["period"] = pd.to_datetime(c_prev["period"], errors="coerce")
+            c_prev = c_prev.dropna(subset=["period"]).sort_values("period")
+            prev_vals = c_prev["ratio"].values
+            prev_months = c_prev["period"].dt.month.values
+        else:
+            prev_vals = np.array([])
+            prev_months = np.array([])
 
         # ── 1. YoY 성장률 ──────────────────────
         if len(c_vals) >= 2 and len(prev_vals) >= 2:
@@ -725,7 +750,7 @@ def page_forecast():
                     f"전월 대비 {mom_rate*100:+.0f}%", body, abs(mom_rate)*100))
 
         # ── 3. 계절성 예측 ─────────────────────
-        if len(prev_vals) >= 6 and len(c_vals) >= 1:
+        if len(prev_vals) >= 3 and len(c_vals) >= 1:
             cur_last_month = int(c_months[-1]) if len(c_months) > 0 else 0
             # 전년도에서 다음 2개월 변화 패턴 추출
             future_months = []
@@ -765,23 +790,25 @@ def page_forecast():
                     f"3개월 연속 하락 ({total_drop:.0f}%)", body, abs(total_drop)))
 
         # ── 6. 기회 발견 (피크 시즌 접근) ──────
-        if len(prev_vals) >= 6 and len(c_vals) >= 1:
+        if len(prev_vals) >= 3 and len(c_vals) >= 1:
             peak_idx = int(np.argmax(prev_vals))
             peak_month = int(prev_months[peak_idx]) if peak_idx < len(prev_months) else 0
             peak_val = float(prev_vals[peak_idx])
             cur_last = int(c_months[-1]) if len(c_months) > 0 else 0
-            months_to_peak = peak_month - cur_last
-            if 1 <= months_to_peak <= 3 and peak_val > 0:
-                # 전년 동월 대비
+            # 피크까지 남은 개월 (연말→연초 wrap 처리)
+            months_to_peak = (peak_month - cur_last) % 12
+            if 1 <= months_to_peak <= 4 and peak_val > 0:
                 cur_same_idx = np.where(prev_months == cur_last)[0]
-                if len(cur_same_idx) > 0:
-                    prev_same_val = float(prev_vals[cur_same_idx[0]])
-                    if prev_same_val > 0:
-                        vs_prev = ((c_vals[-1] - prev_same_val) / prev_same_val) * 100
-                        body = (f"전년 피크: {peak_month}월 (트렌드 {peak_val:.0f})\n"
-                                f"현재 {cur_last}월: {c_vals[-1]:.1f} (전년 {cur_last}월 대비 {vs_prev:+.1f}%)")
-                        all_insights.append(("opportunity", "💡 기회 발견", country,
-                            f"피크 시즌 {months_to_peak}개월 전", body, months_to_peak * 10 + abs(vs_prev)))
+                prev_same_val = float(prev_vals[cur_same_idx[0]]) if len(cur_same_idx) > 0 else 0
+                if prev_same_val > 0:
+                    vs_prev = ((c_vals[-1] - prev_same_val) / prev_same_val) * 100
+                else:
+                    vs_prev = 0
+                body = (f"전년 피크: {peak_month}월 (트렌드 {peak_val:.0f})\n"
+                        f"현재 {cur_last}월: {c_vals[-1]:.1f}" +
+                        (f" (전년 동월 대비 {vs_prev:+.1f}%)" if prev_same_val > 0 else ""))
+                all_insights.append(("opportunity", "💡 기회 발견", country,
+                    f"피크 시즌 {months_to_peak}개월 전", body, 50 + abs(vs_prev)))
 
     # ── 4. 순위 변동 (일괄 처리) ───────────────
     if not trend_prev_df.empty:
