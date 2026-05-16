@@ -887,6 +887,7 @@ def page_query():
             for kw in own_keywords:
                 if f"q_own_{kw}" not in st.session_state:
                     st.session_state[f"q_own_{kw}"] = True
+                st.checkbox(kw, key=f"q_own_{kw}")
             selected_own = [kw for kw in own_keywords if st.session_state.get(f"q_own_{kw}", True)]
 
         with graph_col:
