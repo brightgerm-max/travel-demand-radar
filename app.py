@@ -543,14 +543,12 @@ def page_forecast():
     # TOP 10 & 12개월 추이
     col_top, col_trend_map = st.columns([1, 2])
     with col_top:
-        st.markdown("**🏆 TOP 10 핫 국가**")
-        top10 = country_query.sort_values("demand_score", ascending=False).head(10)
-        top10_display = top10[["국가", "검색량", "demand_score"]].copy()
-        top10_display.columns = ["국가", "검색량", "수요점수"]
-        top10_display["검색량"] = top10_display["검색량"].apply(lambda x: f"{int(x):,}")
-        top10_display["수요점수"] = top10_display["수요점수"].apply(lambda x: f"{x:.1f}")
-        top10_display.index = range(1, len(top10_display) + 1)
-        st.dataframe(top10_display, use_container_width=True, height=380)
+        st.markdown("**🏆 국가별 검색량 순위**")
+        rank_display = country_search[country_search["검색량"] > 0].sort_values("검색량", ascending=False).copy()
+        rank_display["검색량"] = rank_display["검색량"].apply(lambda x: f"{int(x):,}")
+        rank_display.index = range(1, len(rank_display) + 1)
+        rank_display.index.name = "순위"
+        st.dataframe(rank_display, use_container_width=True, height=380)
 
     with col_trend_map:
         st.markdown("**📊 상위 국가 트렌드**")
@@ -632,15 +630,6 @@ def page_forecast():
         else:
             st.info("트렌드 API 데이터를 불러올 수 없습니다.")
 
-    # 국가 순위 테이블
-    st.markdown("**🏅 국가 순위**")
-    rank = country_search[country_search["검색량"] > 0].sort_values("검색량", ascending=False).copy()
-    rank.columns = ["국가", "검색량"]
-    rank["검색량"] = rank["검색량"].apply(lambda x: f"{int(x):,}")
-    rank.index = range(1, len(rank) + 1)
-    rank.index.name = "순위"
-    st.dataframe(rank, use_container_width=True, height=300)
-
     st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
 
     # ── 섹션 4: 키워드별 검색량 히트맵 ─────────────
@@ -678,11 +667,6 @@ def page_forecast():
             )
             st.plotly_chart(fig_heat, use_container_width=True)
 
-        # 국가별 총 검색량 상위/하위
-        st.markdown("**국가별 검색량 순위**")
-        rank_full = country_search[country_search["검색량"] > 0].sort_values("검색량", ascending=False).copy()
-        rank_full["검색량"] = rank_full["검색량"].apply(lambda x: f"{int(x):,}")
-        st.dataframe(rank_full, hide_index=True, use_container_width=True)
 
     st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
 
