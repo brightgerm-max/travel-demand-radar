@@ -1014,10 +1014,6 @@ def page_query():
         전체_키워드 = kw_data["키워드"].tolist()
         기본_키워드 = 전체_키워드[:5]
 
-        선택_키워드 = st.multiselect(
-            "트렌드 확인할 키워드", options=전체_키워드, default=기본_키워드, key="q_kw_select"
-        )
-
         # 수평 바차트
         top25_sorted = top25.sort_values("쿼리수", ascending=True)
         max_val = top25_sorted["쿼리수"].max() if not top25_sorted.empty else 1
@@ -1046,6 +1042,9 @@ def page_query():
         st.plotly_chart(fig_bar, use_container_width=True)
 
         # 키워드 트렌드
+        선택_키워드 = st.multiselect(
+            "트렌드 확인할 키워드", options=전체_키워드, default=기본_키워드, key="q_kw_select"
+        )
         if 선택_키워드:
             st.markdown("**키워드별 수요 트렌드**")
             kw_filtered = df[(df["국가"] == 선택국가) & (df["키워드"].isin(선택_키워드))]
