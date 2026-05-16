@@ -613,39 +613,49 @@ def page_forecast():
 
     st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
 
-    # ── 섹션 4: 키워드별 검색량 히트맵 ─────────────
-    if not search_df.empty:
-        st.markdown('<div class="section-header">🔥 국가별 키워드 검색량</div>', unsafe_allow_html=True)
+    # ── 섹션 4: 키워드별 검색량 (1개국) ─────────────
+    if not search_df.empty and 데이터_국가:
+        st.markdown('<div class="section-header">🔥 키워드 검색량</div>', unsafe_allow_html=True)
 
-        heat_국가 = 데이터_국가
-        heat_data_api = search_df[search_df["국가"].isin(heat_국가)].copy()
-        if not heat_data_api.empty:
-            heat_pivot = heat_data_api.pivot_table(
-                index="국가", columns="키워드", values="총검색수", aggfunc="sum"
-            ).fillna(0)
-            # 국가순위대로 정렬
-            heat_pivot = heat_pivot.reindex(index=[c for c in heat_국가 if c in heat_pivot.index])
+        chart_col, sel_col = st.columns([3, 1])
 
-            text_display = []
-            for row in heat_pivot.values:
-                text_display.append([f"{int(v):,}" if v > 0 else "" for v in row])
+        with sel_col:
+            st.markdown("**국가 선택**")
+            선택_1국가 = st.radio("", 데이터_국가, key="fc_heat_country", label_visibility="collapsed")
 
-            n_c = len(heat_pivot)
-            fig_heat = go.Figure(data=go.Heatmap(
-                z=heat_pivot.values, x=heat_pivot.columns.tolist(), y=heat_pivot.index.tolist(),
-                text=text_display, texttemplate="%{text}", textfont={"size": 10},
-                colorscale=[[0,"#f0f4ff"],[0.25,"#b8ccff"],[0.5,"#667eea"],[0.75,"#4a5acf"],[1,"#2d3a8c"]],
-                hoverongaps=False,
-                hovertemplate="국가: %{y}<br>키워드: %{x}<br>검색량: %{z:,}<extra></extra>",
-                colorbar=dict(title="검색량", tickformat=","),
-            ))
-            fig_heat.update_layout(
-                height=max(400, n_c * 35 + 100), margin=dict(l=80, r=10, t=10, b=100),
-                xaxis=dict(tickangle=-45, side="bottom"),
-                yaxis=dict(autorange="reversed"),
-                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-            )
-            st.plotly_chart(fig_heat, use_container_width=True)
+        with chart_col:
+            one_country_df = search_df[search_df["국가"] == 선택_1국가].copy()
+            if not one_country_df.empty:
+                one_country_df = one_country_df.sort_values("총검색수", ascending=True)
+                # 그라데이션 색상
+                max_v = one_country_df["총검색수"].max() if not one_country_df.empty else 1
+                bar_colors = []
+                for v in one_country_df["총검색수"]:
+                    ratio = v / max_v if max_v > 0 else 0
+                    r = int(102 + (245 - 102) * ratio)
+                    g = int(126 + (87 - 126) * ratio)
+                    b = int(234 + (108 - 234) * ratio)
+                    bar_colors.append(f"rgb({r},{g},{b})")
+
+                fig_kw = go.Figure()
+                fig_kw.add_trace(go.Bar(
+                    x=one_country_df["총검색수"], y=one_country_df["키워드"], orientation="h",
+                    text=one_country_df["총검색수"].apply(lambda x: f"{int(x):,}"),
+                    textposition="outside",
+                    marker=dict(color=bar_colors, line=dict(width=0)),
+                    hovertemplate="키워드: %{y}<br>검색량: %{x:,}<extra></extra>",
+                ))
+                fig_kw.update_layout(
+                    height=max(300, len(one_country_df) * 35 + 60),
+                    margin=dict(l=10, r=60, t=10, b=10),
+                    xaxis=dict(title="", tickformat=",", gridcolor="rgba(0,0,0,0.05)"),
+                    yaxis=dict(title="", automargin=True),
+                    showlegend=False,
+                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                )
+                st.plotly_chart(fig_kw, use_container_width=True)
+            else:
+                st.info(f"{선택_1국가}의 키워드 검색량 데이터가 없습니다.")
 
 
     st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
