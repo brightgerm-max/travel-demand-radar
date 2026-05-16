@@ -9,9 +9,10 @@ import pandas as pd
 
 
 def _get_headers():
+    # 쇼핑 전용 키가 있으면 우선 사용, 없으면 공용 키
     return {
-        "X-Naver-Client-Id": os.environ.get("NAVER_CLIENT_ID", ""),
-        "X-Naver-Client-Secret": os.environ.get("NAVER_CLIENT_SECRET", ""),
+        "X-Naver-Client-Id": os.environ.get("NAVER_SHOPPING_CLIENT_ID", os.environ.get("NAVER_CLIENT_ID", "")),
+        "X-Naver-Client-Secret": os.environ.get("NAVER_SHOPPING_CLIENT_SECRET", os.environ.get("NAVER_CLIENT_SECRET", "")),
     }
 
 
@@ -83,7 +84,9 @@ def search_shopping_df(query, display=100, sort="sim"):
 
 
 def is_available():
-    return bool(os.environ.get("NAVER_CLIENT_ID")) and bool(os.environ.get("NAVER_CLIENT_SECRET"))
+    has_shopping = bool(os.environ.get("NAVER_SHOPPING_CLIENT_ID"))
+    has_common = bool(os.environ.get("NAVER_CLIENT_ID"))
+    return has_shopping or has_common
 
 
 def test_connection():
