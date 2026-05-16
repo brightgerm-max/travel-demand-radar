@@ -699,14 +699,17 @@ def page_forecast():
                 prev_avg = float(np.mean(prev_matching))
                 if prev_avg > 0:
                     yoy_rate = ((cur_avg - prev_avg) / prev_avg) * 100
-                    direction = "성장" if yoy_rate > 0 else "감소"
-                    body = (f"{선택_연도}년 평균: {cur_avg:.1f} vs {prev_year}년 동기: {prev_avg:.1f}\n"
-                            f"→ 전년 대비 수요가 {'증가' if yoy_rate > 0 else '감소'}하고 있습니다.")
-                    all_insights.append(("yoy", f"📊 YoY {direction}", country,
-                        f"전년 동기 대비 {yoy_rate:+.1f}%", body, abs(yoy_rate)))
+                    if abs(yoy_rate) >= 5 and cur_avg >= MIN_TREND:
+                        direction = "성장" if yoy_rate > 0 else "감소"
+                        body = (f"올해({선택_연도}) 검색 트렌드 평균: {cur_avg:.0f}\n"
+                                f"전년({prev_year}) 동기 평균: {prev_avg:.0f}\n"
+                                f"→ 전년 대비 검색 수요가 {abs(yoy_rate):.0f}% {'증가' if yoy_rate > 0 else '감소'}")
+                        all_insights.append(("yoy", f"📊 YoY {direction}", country,
+                            f"전년 동기 대비 {yoy_rate:+.1f}%", body, abs(yoy_rate)))
 
-        # ── 2. MoM 급등/급락 ───────────────────
-        if len(c_vals) >= 2:
+        # ── 2. MoM 급등/급락 (의미 있는 국가만) ──
+        MIN_TREND = 5
+        if len(c_vals) >= 2 and float(c_vals[-1]) >= MIN_TREND:
             mom_rate = ((c_vals[-1] - c_vals[-2]) / c_vals[-2]) if c_vals[-2] > 0 else 0
             if abs(mom_rate) >= 0.15:
                 badge = "⚡ 급등" if mom_rate > 0 else "📉 급락"
@@ -717,10 +720,10 @@ def page_forecast():
                 all_insights.append((css, badge, country,
                     f"전월 대비 {mom_rate*100:+.0f}%", body, abs(mom_rate)*100))
 
-        # ── 3. 계절성 예측 ─────────────────────
-        if len(prev_vals) >= 3 and len(c_vals) >= 1:
+        # ── 3. 계절성 예측 (트렌드 값이 의미 있는 국가만) ──
+        MIN_TREND = 5  # 트렌드 ratio 최소 기준 (0~100 중 5 미만은 무의미)
+        if len(prev_vals) >= 3 and len(c_vals) >= 1 and float(np.mean(c_vals)) >= MIN_TREND:
             cur_last_month = int(c_months[-1]) if len(c_months) > 0 else 0
-            # 전년도에서 다음 2개월 변화 패턴 추출
             future_months = []
             for fm in range(cur_last_month + 1, min(cur_last_month + 3, 13)):
                 idx = np.where(prev_months == fm)[0]
@@ -730,20 +733,21 @@ def page_forecast():
             if future_months and len(cur_month_idx) > 0:
                 prev_base = float(prev_vals[cur_month_idx[0]])
                 peak_month, peak_val = max(future_months, key=lambda x: x[1])
-                if prev_base > 0:
+                if prev_base >= MIN_TREND:
                     expected_change = ((peak_val - prev_base) / prev_base) * 100
                     if abs(expected_change) >= 20:
                         direction = "상승" if expected_change > 0 else "하락"
-                        body = (f"전년 패턴: {cur_last_month}월 {prev_base:.0f} → {peak_month}월 {peak_val:.0f} ({expected_change:+.0f}%)\n"
-                                f"올해 {cur_last_month}월: {c_vals[-1]:.1f}")
+                        body = (f"전년도 {cur_last_month}월→{peak_month}월: 검색 트렌드 {prev_base:.0f} → {peak_val:.0f} ({expected_change:+.0f}%)\n"
+                                f"올해 {cur_last_month}월 현재 트렌드: {c_vals[-1]:.0f}\n"
+                                f"→ 전년 패턴이 반복되면 {peak_month}월에 {direction} 예상")
                         all_insights.append(("predict", f"🔮 {peak_month}월 {direction} 예상", country,
                             f"전년 패턴 기반 {expected_change:+.0f}% {direction} 전망", body, abs(expected_change)))
 
         # ── 4. 순위 변동 ──────────────────────
         # (아래에서 일괄 처리)
 
-        # ── 5. 하락 경고 (3개월 연속 하락) ──────
-        if len(c_vals) >= 3:
+        # ── 5. 하락 경고 (3개월 연속 하락, 의미 있는 국가만) ──
+        if len(c_vals) >= 3 and float(np.mean(c_vals[-3:])) >= MIN_TREND:
             last3 = c_vals[-3:]
             if last3[0] > last3[1] > last3[2]:
                 total_drop = ((last3[2] - last3[0]) / last3[0]) * 100 if last3[0] > 0 else 0
@@ -757,8 +761,8 @@ def page_forecast():
                 all_insights.append(("down", "📉 하락 경고", country,
                     f"3개월 연속 하락 ({total_drop:.0f}%)", body, abs(total_drop)))
 
-        # ── 6. 기회 발견 (피크 시즌 접근) ──────
-        if len(prev_vals) >= 3 and len(c_vals) >= 1:
+        # ── 6. 기회 발견 (피크 시즌 접근, 의미 있는 국가만) ──
+        if len(prev_vals) >= 3 and len(c_vals) >= 1 and float(np.mean(prev_vals)) >= MIN_TREND:
             peak_idx = int(np.argmax(prev_vals))
             peak_month = int(prev_months[peak_idx]) if peak_idx < len(prev_months) else 0
             peak_val = float(prev_vals[peak_idx])
