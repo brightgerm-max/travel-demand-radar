@@ -272,7 +272,7 @@ with st.sidebar:
         _logo_b64 = base64.b64encode(_logo_path.read_bytes()).decode()
         st.markdown(f"""
         <div style="text-align:center; padding: 16px 0 4px 0;">
-            <img src="data:image/png;base64,{_logo_b64}" style="width:140px;">
+            <img src="data:image/png;base64,{_logo_b64}" style="width:90px;">
         </div>
         """, unsafe_allow_html=True)
     st.markdown("""
