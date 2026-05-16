@@ -162,10 +162,8 @@ section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
     max-height: 260px; overflow-y: auto;
 }
 section[data-testid="stSidebar"] hr { border-color: rgba(255,255,255,0.15) !important; }
-/* Hide fullscreen button on sidebar images */
-section[data-testid="stSidebar"] button[title="View fullscreen"] { display: none !important; }
-/* Center sidebar image */
-section[data-testid="stSidebar"] [data-testid="stImage"] { text-align: center; display: flex; justify-content: center; }
+/* Hide fullscreen on all images */
+button[title="View fullscreen"], [data-testid="StyledFullScreenButton"] { display: none !important; }
 /* Sidebar nav buttons */
 section[data-testid="stSidebar"] .stButton > button {
     background: transparent !important;
@@ -268,7 +266,15 @@ MENU_ITEMS = [
 
 # ── 사이드바 ────────────────────────────────────────
 with st.sidebar:
-    st.image("klook_logo.png", width=160)
+    import base64
+    _logo_path = Path(__file__).parent / "klook_logo.png"
+    if _logo_path.exists():
+        _logo_b64 = base64.b64encode(_logo_path.read_bytes()).decode()
+        st.markdown(f"""
+        <div style="text-align:center; padding: 16px 0 4px 0;">
+            <img src="data:image/png;base64,{_logo_b64}" style="width:140px;">
+        </div>
+        """, unsafe_allow_html=True)
     st.markdown("""
     <div style="text-align:center; padding: 0 0 8px 0;">
         <div style="font-size:16px; font-weight:700; color:white;">Travel Demand Radar</div>
