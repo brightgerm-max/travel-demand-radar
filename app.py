@@ -617,45 +617,38 @@ def page_forecast():
     if not search_df.empty and 데이터_국가:
         st.markdown('<div class="section-header">🔥 키워드 검색량</div>', unsafe_allow_html=True)
 
-        chart_col, sel_col = st.columns([3, 1])
+        선택_1국가 = st.selectbox("국가 선택", 데이터_국가, key="fc_heat_country")
+        one_country_df = search_df[search_df["국가"] == 선택_1국가].copy()
+        if not one_country_df.empty:
+            one_country_df = one_country_df.sort_values("총검색수", ascending=True)
+            max_v = one_country_df["총검색수"].max() if not one_country_df.empty else 1
+            bar_colors = []
+            for v in one_country_df["총검색수"]:
+                ratio = v / max_v if max_v > 0 else 0
+                r = int(102 + (245 - 102) * ratio)
+                g = int(126 + (87 - 126) * ratio)
+                b = int(234 + (108 - 234) * ratio)
+                bar_colors.append(f"rgb({r},{g},{b})")
 
-        with sel_col:
-            st.markdown("**국가 선택**")
-            선택_1국가 = st.radio("", 데이터_국가, key="fc_heat_country", label_visibility="collapsed")
-
-        with chart_col:
-            one_country_df = search_df[search_df["국가"] == 선택_1국가].copy()
-            if not one_country_df.empty:
-                one_country_df = one_country_df.sort_values("총검색수", ascending=True)
-                # 그라데이션 색상
-                max_v = one_country_df["총검색수"].max() if not one_country_df.empty else 1
-                bar_colors = []
-                for v in one_country_df["총검색수"]:
-                    ratio = v / max_v if max_v > 0 else 0
-                    r = int(102 + (245 - 102) * ratio)
-                    g = int(126 + (87 - 126) * ratio)
-                    b = int(234 + (108 - 234) * ratio)
-                    bar_colors.append(f"rgb({r},{g},{b})")
-
-                fig_kw = go.Figure()
-                fig_kw.add_trace(go.Bar(
-                    x=one_country_df["총검색수"], y=one_country_df["키워드"], orientation="h",
-                    text=one_country_df["총검색수"].apply(lambda x: f"{int(x):,}"),
-                    textposition="outside",
-                    marker=dict(color=bar_colors, line=dict(width=0)),
-                    hovertemplate="키워드: %{y}<br>검색량: %{x:,}<extra></extra>",
-                ))
-                fig_kw.update_layout(
-                    height=max(300, len(one_country_df) * 35 + 60),
-                    margin=dict(l=10, r=60, t=10, b=10),
-                    xaxis=dict(title="", tickformat=",", gridcolor="rgba(0,0,0,0.05)"),
-                    yaxis=dict(title="", automargin=True),
-                    showlegend=False,
-                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                )
-                st.plotly_chart(fig_kw, use_container_width=True)
-            else:
-                st.info(f"{선택_1국가}의 키워드 검색량 데이터가 없습니다.")
+            fig_kw = go.Figure()
+            fig_kw.add_trace(go.Bar(
+                x=one_country_df["총검색수"], y=one_country_df["키워드"], orientation="h",
+                text=one_country_df["총검색수"].apply(lambda x: f"{int(x):,}"),
+                textposition="outside",
+                marker=dict(color=bar_colors, line=dict(width=0)),
+                hovertemplate="키워드: %{y}<br>검색량: %{x:,}<extra></extra>",
+            ))
+            fig_kw.update_layout(
+                height=max(300, len(one_country_df) * 35 + 60),
+                margin=dict(l=10, r=60, t=10, b=10),
+                xaxis=dict(title="", tickformat=",", gridcolor="rgba(0,0,0,0.05)"),
+                yaxis=dict(title="", automargin=True),
+                showlegend=False,
+                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+            )
+            st.plotly_chart(fig_kw, use_container_width=True)
+        else:
+            st.info(f"{선택_1국가}의 키워드 검색량 데이터가 없습니다.")
 
 
     st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
