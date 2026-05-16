@@ -6,24 +6,34 @@
   },
   "경쟁사": [
     {
-      "name": "야놀자",
-      "mall_names": ["야놀자", "Yanolja"],
-      "brand_keywords": ["야놀자 해외여행"]
-    },
-    {
       "name": "마이리얼트립",
       "mall_names": ["마이리얼트립", "MyRealTrip"],
       "brand_keywords": ["마이리얼트립"]
     },
     {
+      "name": "케이케이데이",
+      "mall_names": ["케이케이데이", "KKday", "kkday"],
+      "brand_keywords": ["케이케이데이", "KKday"]
+    },
+    {
+      "name": "큐재팬",
+      "mall_names": ["큐재팬"],
+      "brand_keywords": ["큐재팬"]
+    },
+    {
+      "name": "투어비스",
+      "mall_names": ["투어비스"],
+      "brand_keywords": ["투어비스"]
+    },
+    {
+      "name": "야놀자",
+      "mall_names": ["야놀자", "Yanolja"],
+      "brand_keywords": ["야놀자 해외여행"]
+    },
+    {
       "name": "트립닷컴",
       "mall_names": ["트립닷컴", "Trip.com"],
       "brand_keywords": ["트립닷컴"]
-    },
-    {
-      "name": "카약",
-      "mall_names": ["카약", "KAYAK"],
-      "brand_keywords": ["카약"]
     }
   ]
 }
