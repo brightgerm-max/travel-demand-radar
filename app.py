@@ -667,6 +667,7 @@ def page_forecast():
     )
 
     all_insights = []
+    MIN_TREND = 5  # 트렌드 ratio 최소 기준 (0~100 중 5 미만은 무의미)
 
     for country in 데이터_국가:
         # 올해 데이터
@@ -708,7 +709,6 @@ def page_forecast():
                             f"전년 동기 대비 {yoy_rate:+.1f}%", body, abs(yoy_rate)))
 
         # ── 2. MoM 급등/급락 (의미 있는 국가만) ──
-        MIN_TREND = 5
         if len(c_vals) >= 2 and float(c_vals[-1]) >= MIN_TREND:
             mom_rate = ((c_vals[-1] - c_vals[-2]) / c_vals[-2]) if c_vals[-2] > 0 else 0
             if abs(mom_rate) >= 0.15:
@@ -721,7 +721,6 @@ def page_forecast():
                     f"전월 대비 {mom_rate*100:+.0f}%", body, abs(mom_rate)*100))
 
         # ── 3. 계절성 예측 (트렌드 값이 의미 있는 국가만) ──
-        MIN_TREND = 5  # 트렌드 ratio 최소 기준 (0~100 중 5 미만은 무의미)
         if len(prev_vals) >= 3 and len(c_vals) >= 1 and float(np.mean(c_vals)) >= MIN_TREND:
             cur_last_month = int(c_months[-1]) if len(c_months) > 0 else 0
             future_months = []
