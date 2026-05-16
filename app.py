@@ -32,7 +32,7 @@ if _env_path.exists():
             os.environ.setdefault(k.strip(), v.strip())
 
 # ── 페이지 설정 ─────────────────────────────────────
-st.set_page_config(page_title="Travel Demand Radar", layout="wide", page_icon="🌏")
+st.set_page_config(page_title="Klook Travel Demand Radar", layout="wide", page_icon="🧡")
 
 # ── 경로 상수 ───────────────────────────────────────
 BASE_DIR = Path(__file__).parent
@@ -149,23 +149,24 @@ def get_country_color_map(countries):
 # ── CSS ─────────────────────────────────────────────
 st.markdown("""
 <style>
-/* Sidebar */
+/* Sidebar — Klook Brand */
 section[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #0c1929 0%, #142338 50%, #1a2d45 100%);
+    background: linear-gradient(180deg, #FF5722 0%, #E64A19 50%, #BF360C 100%);
     min-width: 250px; max-width: 250px;
 }
 section[data-testid="stSidebar"] .stMarkdown, section[data-testid="stSidebar"] label,
 section[data-testid="stSidebar"] span, section[data-testid="stSidebar"] p {
-    color: #e0e0e0 !important;
+    color: #fff3e0 !important;
 }
 section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
     max-height: 260px; overflow-y: auto;
 }
+section[data-testid="stSidebar"] hr { border-color: rgba(255,255,255,0.2) !important; }
 /* Sidebar nav buttons */
 section[data-testid="stSidebar"] .stButton > button {
     background: transparent !important;
     border: none !important;
-    color: #9ca3af !important;
+    color: rgba(255,255,255,0.75) !important;
     text-align: left !important;
     font-size: 0.85rem !important;
     padding: 8px 12px !important;
@@ -174,11 +175,11 @@ section[data-testid="stSidebar"] .stButton > button {
     width: 100% !important;
 }
 section[data-testid="stSidebar"] .stButton > button:hover {
-    background: rgba(255,255,255,0.08) !important;
+    background: rgba(255,255,255,0.15) !important;
     color: #ffffff !important;
 }
 section[data-testid="stSidebar"] .stButton > button[kind="primary"] {
-    background: #2563eb !important;
+    background: rgba(255,255,255,0.25) !important;
     color: #ffffff !important;
     font-weight: 600 !important;
 }
@@ -263,11 +264,11 @@ MENU_ITEMS = [
 
 # ── 사이드바 ────────────────────────────────────────
 with st.sidebar:
+    st.image("klook_logo.png", width=160)
     st.markdown("""
-    <div style="text-align:center; padding: 16px 0 8px 0;">
-        <div style="font-size:36px;">🌏</div>
-        <div style="font-size:18px; font-weight:700; color:white; margin-top:4px;">Travel Demand Radar</div>
-        <div style="font-size:12px; color:#aaa;">여행 수요 예측 플랫폼</div>
+    <div style="text-align:center; padding: 0 0 8px 0;">
+        <div style="font-size:16px; font-weight:700; color:white;">Travel Demand Radar</div>
+        <div style="font-size:11px; color:rgba(255,255,255,0.7);">여행 수요 예측 플랫폼</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -297,7 +298,7 @@ with st.sidebar:
         st.markdown(f'<div style="padding:2px 12px;font-size:12px;color:#ccc;"><span class="source-dot {dot_class}"></span>{name}</div>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
-    st.caption("v3.0 — 여행 수요 예측 플랫폼")
+    st.caption("v3.0 — Klook Travel Demand Radar")
 
 
 # ====================================================================
