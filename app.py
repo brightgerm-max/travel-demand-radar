@@ -911,9 +911,9 @@ def page_query():
             else:
                 st.info("🔑 네이버 데이터랩 API 키를 설정하면 실시간 트렌드를 확인할 수 있습니다.")
 
-        # 월간 검색량
+        # 월평균 검색량
         if naver_searchad.is_available() and selected_own:
-            st.markdown('<div class="section-header">📈 월간 검색량</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-header">📈 월평균 검색량 (PC/모바일)</div>', unsafe_allow_html=True)
             with st.spinner("검색량 조회 중..."):
                 stats_df = naver_searchad.get_keyword_stats(selected_own)
             if not stats_df.empty and "relKeyword" in stats_df.columns:
@@ -1079,9 +1079,9 @@ def page_query():
                 )
                 st.plotly_chart(fig, use_container_width=True)
 
-        # 키워드별 월간 검색량 비교 테이블
+        # 키워드별 월평균 검색량 비교
         if naver_searchad.is_available() and selected_comp_kw:
-            st.markdown('<div class="section-header">📈 키워드별 검색량 비교</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-header">📈 키워드별 월평균 검색량 비교</div>', unsafe_allow_html=True)
             with st.spinner("검색량 조회 중..."):
                 stats_df = naver_searchad.get_keyword_stats(selected_comp_kw)
             if not stats_df.empty and "relKeyword" in stats_df.columns:
