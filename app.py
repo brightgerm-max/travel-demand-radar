@@ -1084,19 +1084,28 @@ def page_query():
             with st.spinner("검색량 조회 중..."):
                 stats_df = naver_searchad.get_keyword_stats(selected_comp_kw)
             if not stats_df.empty and "relKeyword" in stats_df.columns:
-                kw_lower = set(k.lower() for k in selected_comp_kw)
-                filtered_stats = stats_df[stats_df["relKeyword"].str.lower().isin(kw_lower)].copy()
+                # 부분 매칭: 입력 키워드가 relKeyword에 포함되거나 그 반대
+                kw_input = [k.lower() for k in selected_comp_kw]
+                def _match(rel):
+                    rel_l = rel.lower()
+                    return any(k in rel_l or rel_l in k for k in kw_input)
+                filtered_stats = stats_df[stats_df["relKeyword"].apply(_match)].copy()
                 if filtered_stats.empty:
                     filtered_stats = stats_df.head(len(selected_comp_kw))
                 filtered_stats["구분"] = filtered_stats["relKeyword"].apply(
-                    lambda x: "자사" if x in own_kw else "경쟁사"
+                    lambda x: "자사" if any(k.lower() in x.lower() for k in own_kw) else "경쟁사"
                 )
-                display_cols = ["relKeyword", "monthlyPcQcCnt", "monthlyMobileQcCnt", "구분"]
+                if "monthlyPcQcCnt" in filtered_stats.columns and "monthlyMobileQcCnt" in filtered_stats.columns:
+                    filtered_stats["총검색량"] = filtered_stats["monthlyPcQcCnt"] + filtered_stats["monthlyMobileQcCnt"]
+                    filtered_stats = filtered_stats.sort_values("총검색량", ascending=False)
+                display_cols = ["relKeyword", "monthlyPcQcCnt", "monthlyMobileQcCnt", "총검색량", "구분"]
                 existing = [c for c in display_cols if c in filtered_stats.columns]
                 show_df = filtered_stats[existing].copy()
                 rename_map = {"relKeyword": "키워드", "monthlyPcQcCnt": "PC 검색량", "monthlyMobileQcCnt": "모바일 검색량"}
                 show_df = show_df.rename(columns=rename_map)
                 st.dataframe(show_df, hide_index=True, use_container_width=True)
+            else:
+                st.info("검색량 데이터가 없습니다.")
         else:
             st.info("🔑 네이버 검색광고 API 키를 설정하면 검색량 비교가 가능합니다.")
 
