@@ -205,6 +205,10 @@ section[data-testid="stSidebar"] .stButton > button[kind="primary"] {
 .insight-card.drop { background: #fef4f4; border-color: #e74c3c; }
 .insight-card.up { background: #eef6ff; border-color: #3498db; }
 .insight-card.down { background: #fff8ee; border-color: #f39c12; }
+.insight-card.yoy { background: #f0f0ff; border-color: #667eea; }
+.insight-card.predict { background: #fff0f5; border-color: #e91e8b; }
+.insight-card.rank { background: #f5f0ff; border-color: #9b59b6; }
+.insight-card.opportunity { background: #e8faf0; border-color: #1abc9c; }
 .insight-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
 .insight-body { font-size: 13px; color: #555; line-height: 1.5; }
 /* Filter summary badges */
@@ -426,9 +430,13 @@ def page_forecast():
         today = date.today().isoformat()
         end_dt = today if 선택_연도 >= date.today().year else f"{선택_연도}-12-31"
         trend_api_df = load_trend_data(kw_tuple, f"{선택_연도}-01-01", end_dt)
+        # 전년도 트렌드 (인사이트용)
+        prev_year = 선택_연도 - 1
+        trend_prev_df = load_trend_data(kw_tuple, f"{prev_year}-01-01", f"{prev_year}-12-31")
     else:
         search_df = pd.DataFrame()
         trend_api_df = pd.DataFrame()
+        trend_prev_df = pd.DataFrame()
 
     # API 데이터 또는 CSV fallback
     if not search_df.empty:
@@ -660,38 +668,173 @@ def page_forecast():
 
     st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
 
-    # ── 섹션 5: 자동 인사이트 (트렌드 API 기반) ─────
-    st.markdown('<div class="section-header">💡 자동 인사이트</div>', unsafe_allow_html=True)
+    # ── 섹션 5: 심층 인사이트 ─────────────────────
+    st.markdown('<div class="section-header">💡 심층 인사이트</div>', unsafe_allow_html=True)
 
-    if not trend_api_df.empty:
-        insights = []
-        for country in 데이터_국가:
-            c_data = trend_api_df[trend_api_df["국가"] == country].sort_values("period")
-            c_vals = c_data["ratio"].values
-            if len(c_vals) < 2:
-                continue
-            slope = get_trend_slope(c_vals)
-            mean_val = c_vals.mean()
-            slope_rate = (slope / mean_val) if mean_val > 0 else 0
-            mom_rate = ((c_vals[-1] - c_vals[-2]) / c_vals[-2]) if c_vals[-2] > 0 else 0
-
-            if mom_rate >= 0.2:
-                insights.append(("surge", "⚡ 급등", country, f"전월 대비 {mom_rate*100:.0f}% 급등"))
-            elif mom_rate <= -0.2:
-                insights.append(("drop", "📉 급락", country, f"전월 대비 {abs(mom_rate)*100:.0f}% 급락"))
-            elif slope_rate > 0.02:
-                insights.append(("up", "📈 상승세", country, f"최근 {len(c_vals)}개월 우상향 추세"))
-            elif slope_rate < -0.02:
-                insights.append(("down", "⚠️ 하락세", country, f"최근 {len(c_vals)}개월 우하향 추세"))
-
-        if insights:
-            for group_type in ["surge", "drop", "up", "down"]:
-                for css_class, badge, country, msg in [i for i in insights if i[0] == group_type]:
-                    st.markdown(f'<div class="insight-card {css_class}"><div class="insight-title">{badge} {country}</div><div class="insight-body">{msg}</div></div>', unsafe_allow_html=True)
-        else:
-            st.write("현재 기간에서 특이 패턴이 감지되지 않았어요.")
-    else:
+    if trend_api_df.empty:
         st.write("트렌드 데이터가 없어 인사이트를 생성할 수 없습니다.")
+        return
+
+    # 인사이트 필터
+    insight_filter = st.radio(
+        "인사이트 유형", ["전체", "📊 YoY 성장률", "⚡ 급등/급락", "🔮 계절성 예측", "🏆 순위 변동", "📉 하락 경고", "💡 기회 발견"],
+        horizontal=True, key="insight_filter",
+    )
+
+    all_insights = []
+
+    for country in 데이터_국가:
+        # 올해 데이터
+        c_cur = trend_api_df[trend_api_df["국가"] == country].sort_values("period")
+        if c_cur.empty:
+            continue
+        c_vals = c_cur["ratio"].values
+        c_months = c_cur["period"].dt.month.values if "period" in c_cur.columns else []
+
+        # 전년 데이터
+        c_prev = trend_prev_df[trend_prev_df["국가"] == country].sort_values("period") if not trend_prev_df.empty else pd.DataFrame()
+        prev_vals = c_prev["ratio"].values if not c_prev.empty else np.array([])
+        prev_months = c_prev["period"].dt.month.values if not c_prev.empty and "period" in c_prev.columns else np.array([])
+
+        # ── 1. YoY 성장률 ──────────────────────
+        if len(c_vals) >= 2 and len(prev_vals) >= 2:
+            # 올해 선택월과 전년 동일월 비교
+            cur_month_set = set(c_months)
+            prev_matching = [prev_vals[i] for i, m in enumerate(prev_months) if m in cur_month_set]
+            if prev_matching:
+                cur_avg = float(np.mean(c_vals))
+                prev_avg = float(np.mean(prev_matching))
+                if prev_avg > 0:
+                    yoy_rate = ((cur_avg - prev_avg) / prev_avg) * 100
+                    direction = "성장" if yoy_rate > 0 else "감소"
+                    body = (f"{선택_연도}년 평균: {cur_avg:.1f} vs {prev_year}년 동기: {prev_avg:.1f}\n"
+                            f"→ 전년 대비 수요가 {'증가' if yoy_rate > 0 else '감소'}하고 있습니다.")
+                    all_insights.append(("yoy", f"📊 YoY {direction}", country,
+                        f"전년 동기 대비 {yoy_rate:+.1f}%", body, abs(yoy_rate)))
+
+        # ── 2. MoM 급등/급락 ───────────────────
+        if len(c_vals) >= 2:
+            mom_rate = ((c_vals[-1] - c_vals[-2]) / c_vals[-2]) if c_vals[-2] > 0 else 0
+            if abs(mom_rate) >= 0.15:
+                badge = "⚡ 급등" if mom_rate > 0 else "📉 급락"
+                css = "surge" if mom_rate > 0 else "drop"
+                prev_m = int(c_months[-2]) if len(c_months) >= 2 else 0
+                cur_m = int(c_months[-1]) if len(c_months) >= 1 else 0
+                body = f"{prev_m}월: {c_vals[-2]:.1f} → {cur_m}월: {c_vals[-1]:.1f}"
+                all_insights.append((css, badge, country,
+                    f"전월 대비 {mom_rate*100:+.0f}%", body, abs(mom_rate)*100))
+
+        # ── 3. 계절성 예측 ─────────────────────
+        if len(prev_vals) >= 6 and len(c_vals) >= 1:
+            cur_last_month = int(c_months[-1]) if len(c_months) > 0 else 0
+            # 전년도에서 다음 2개월 변화 패턴 추출
+            future_months = []
+            for fm in range(cur_last_month + 1, min(cur_last_month + 3, 13)):
+                idx = np.where(prev_months == fm)[0]
+                if len(idx) > 0:
+                    future_months.append((fm, float(prev_vals[idx[0]])))
+            cur_month_idx = np.where(prev_months == cur_last_month)[0]
+            if future_months and len(cur_month_idx) > 0:
+                prev_base = float(prev_vals[cur_month_idx[0]])
+                peak_month, peak_val = max(future_months, key=lambda x: x[1])
+                if prev_base > 0:
+                    expected_change = ((peak_val - prev_base) / prev_base) * 100
+                    if abs(expected_change) >= 20:
+                        direction = "상승" if expected_change > 0 else "하락"
+                        body = (f"전년 패턴: {cur_last_month}월 {prev_base:.0f} → {peak_month}월 {peak_val:.0f} ({expected_change:+.0f}%)\n"
+                                f"올해 {cur_last_month}월: {c_vals[-1]:.1f}")
+                        all_insights.append(("predict", f"🔮 {peak_month}월 {direction} 예상", country,
+                            f"전년 패턴 기반 {expected_change:+.0f}% {direction} 전망", body, abs(expected_change)))
+
+        # ── 4. 순위 변동 ──────────────────────
+        # (아래에서 일괄 처리)
+
+        # ── 5. 하락 경고 (3개월 연속 하락) ──────
+        if len(c_vals) >= 3:
+            last3 = c_vals[-3:]
+            if last3[0] > last3[1] > last3[2]:
+                total_drop = ((last3[2] - last3[0]) / last3[0]) * 100 if last3[0] > 0 else 0
+                m1, m2, m3 = [int(c_months[-3+i]) for i in range(3)] if len(c_months) >= 3 else [0,0,0]
+                body = f"{m1}월: {last3[0]:.1f} → {m2}월: {last3[1]:.1f} → {m3}월: {last3[2]:.1f}"
+                # 전년 동기 비교
+                if len(prev_vals) >= 3 and len(prev_months) >= 3:
+                    prev_same = [prev_vals[i] for i, m in enumerate(prev_months) if m in [m1,m2,m3]]
+                    if len(prev_same) >= 2 and prev_same[-1] > prev_same[0]:
+                        body += f"\n전년 동기에는 상승 추세였음 → 전년과 다른 패턴, 주의 필요"
+                all_insights.append(("down", "📉 하락 경고", country,
+                    f"3개월 연속 하락 ({total_drop:.0f}%)", body, abs(total_drop)))
+
+        # ── 6. 기회 발견 (피크 시즌 접근) ──────
+        if len(prev_vals) >= 6 and len(c_vals) >= 1:
+            peak_idx = int(np.argmax(prev_vals))
+            peak_month = int(prev_months[peak_idx]) if peak_idx < len(prev_months) else 0
+            peak_val = float(prev_vals[peak_idx])
+            cur_last = int(c_months[-1]) if len(c_months) > 0 else 0
+            months_to_peak = peak_month - cur_last
+            if 1 <= months_to_peak <= 3 and peak_val > 0:
+                # 전년 동월 대비
+                cur_same_idx = np.where(prev_months == cur_last)[0]
+                if len(cur_same_idx) > 0:
+                    prev_same_val = float(prev_vals[cur_same_idx[0]])
+                    if prev_same_val > 0:
+                        vs_prev = ((c_vals[-1] - prev_same_val) / prev_same_val) * 100
+                        body = (f"전년 피크: {peak_month}월 (트렌드 {peak_val:.0f})\n"
+                                f"현재 {cur_last}월: {c_vals[-1]:.1f} (전년 {cur_last}월 대비 {vs_prev:+.1f}%)")
+                        all_insights.append(("opportunity", "💡 기회 발견", country,
+                            f"피크 시즌 {months_to_peak}개월 전", body, months_to_peak * 10 + abs(vs_prev)))
+
+    # ── 4. 순위 변동 (일괄 처리) ───────────────
+    if not trend_prev_df.empty:
+        cur_ranks = {}
+        prev_ranks = {}
+        for country in 데이터_국가:
+            c_cur = trend_api_df[trend_api_df["국가"] == country]
+            c_prev = trend_prev_df[trend_prev_df["국가"] == country]
+            if not c_cur.empty:
+                cur_ranks[country] = float(c_cur["ratio"].mean())
+            if not c_prev.empty:
+                prev_ranks[country] = float(c_prev["ratio"].mean())
+
+        cur_sorted = sorted(cur_ranks.items(), key=lambda x: -x[1])
+        prev_sorted = sorted(prev_ranks.items(), key=lambda x: -x[1])
+        cur_rank_map = {c: i+1 for i, (c, _) in enumerate(cur_sorted)}
+        prev_rank_map = {c: i+1 for i, (c, _) in enumerate(prev_sorted)}
+
+        for country in 데이터_국가:
+            if country in cur_rank_map and country in prev_rank_map:
+                diff = prev_rank_map[country] - cur_rank_map[country]
+                if abs(diff) >= 3:
+                    direction = "상승" if diff > 0 else "하락"
+                    body = f"전년 순위: {prev_rank_map[country]}위 → 올해: {cur_rank_map[country]}위"
+                    all_insights.append(("rank", f"🏆 순위 {direction}", country,
+                        f"순위 {abs(diff)}단계 {direction}", body, abs(diff) * 10))
+
+    # ── 인사이트 필터링 & 렌더링 ──────────────
+    type_map = {
+        "📊 YoY 성장률": "yoy",
+        "⚡ 급등/급락": ["surge", "drop"],
+        "🔮 계절성 예측": "predict",
+        "🏆 순위 변동": "rank",
+        "📉 하락 경고": "down",
+        "💡 기회 발견": "opportunity",
+    }
+
+    if insight_filter != "전체":
+        target = type_map.get(insight_filter, "")
+        if isinstance(target, list):
+            all_insights = [i for i in all_insights if i[0] in target]
+        else:
+            all_insights = [i for i in all_insights if i[0] == target]
+
+    # 중요도순 정렬
+    all_insights.sort(key=lambda x: -x[5])
+
+    if all_insights:
+        for css_class, badge, country, title, body, _ in all_insights:
+            body_html = body.replace("\n", "<br>")
+            st.markdown(f'<div class="insight-card {css_class}"><div class="insight-title">{badge} {country} — {title}</div><div class="insight-body">{body_html}</div></div>', unsafe_allow_html=True)
+    else:
+        st.write("선택한 유형의 인사이트가 없습니다.")
 
 
 # ====================================================================
