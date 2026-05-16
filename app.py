@@ -586,30 +586,8 @@ def page_forecast():
 
     st.markdown('<div class="section-header">📈 수요 트렌드</div>', unsafe_allow_html=True)
 
-    # 국가 필터 (multiselect + 전체/해제 버튼)
-    if "fc_trend_countries" not in st.session_state:
-        st.session_state["fc_trend_countries"] = 데이터_국가.copy()
-    fc1, fc2, fc3 = st.columns([0.5, 0.5, 5])
-    with fc1:
-        if st.button("전체", key="fc_trend_sel_all", use_container_width=True):
-            st.session_state["fc_trend_countries"] = 데이터_국가.copy()
-            st.rerun()
-    with fc2:
-        if st.button("해제", key="fc_trend_sel_none", use_container_width=True):
-            st.session_state["fc_trend_countries"] = []
-            st.rerun()
-    with fc3:
-        trend_선택_국가 = st.multiselect(
-            "국가 필터", 데이터_국가,
-            default=st.session_state["fc_trend_countries"],
-            key="fc_trend_ms", label_visibility="collapsed",
-        )
-        st.session_state["fc_trend_countries"] = trend_선택_국가
-
-    if not trend_선택_국가:
-        st.info("국가를 1개 이상 선택해주세요.")
-    elif not trend_api_df.empty:
-        trend_filtered = trend_api_df[trend_api_df["국가"].isin(trend_선택_국가)].copy()
+    if not trend_api_df.empty:
+        trend_filtered = trend_api_df[trend_api_df["국가"].isin(데이터_국가)].copy()
         if not trend_filtered.empty:
             trend_filtered["period_str"] = trend_filtered["period"].dt.strftime("%Y-%m")
             trend_filtered["월"] = trend_filtered["period"].dt.month
@@ -617,7 +595,7 @@ def page_forecast():
             fig = px.line(
                 trend_filtered, x="period_str", y="ratio", color="국가",
                 markers=True, color_discrete_map=color_map,
-                category_orders={"국가": trend_선택_국가},
+                category_orders={"국가": 데이터_국가},
                 labels={"period_str": "", "ratio": ""},
             )
             fig.update_layout(
@@ -639,7 +617,7 @@ def page_forecast():
     if not search_df.empty:
         st.markdown('<div class="section-header">🔥 국가별 키워드 검색량</div>', unsafe_allow_html=True)
 
-        heat_국가 = trend_선택_국가 if trend_선택_국가 else 데이터_국가
+        heat_국가 = 데이터_국가
         heat_data_api = search_df[search_df["국가"].isin(heat_국가)].copy()
         if not heat_data_api.empty:
             heat_pivot = heat_data_api.pivot_table(
