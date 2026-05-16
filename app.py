@@ -558,11 +558,24 @@ def page_forecast():
             t5_df = trend_api_df[trend_api_df["국가"].isin(top5)].copy()
             if not t5_df.empty:
                 t5_df["period_str"] = t5_df["period"].dt.strftime("%Y-%m")
+                # 트렌드 → 추정 검색수 변환
+                y_col_t5 = "ratio"
+                if not search_df.empty:
+                    country_vol = search_df.groupby("국가")["총검색수"].sum().to_dict()
+                    est = []
+                    for _, row in t5_df.iterrows():
+                        vol = country_vol.get(row["국가"], 0)
+                        ct = t5_df[t5_df["국가"] == row["국가"]]
+                        ref = ct[ct["ratio"] > 0]["ratio"].iloc[-1] if len(ct[ct["ratio"] > 0]) > 0 else 0
+                        est.append(int(row["ratio"] * vol / ref) if ref > 0 and vol > 0 else 0)
+                    t5_df["추정검색수"] = est
+                    if sum(est) > 0:
+                        y_col_t5 = "추정검색수"
                 fig_trend12 = px.line(
-                    t5_df, x="period_str", y="ratio", color="국가",
+                    t5_df, x="period_str", y=y_col_t5, color="국가",
                     markers=True, color_discrete_map=color_map,
                     category_orders={"국가": top5},
-                    labels={"period_str": "연월", "ratio": "검색 트렌드"},
+                    labels={"period_str": "", y_col_t5: ""},
                 )
                 fig_trend12.update_layout(
                     height=400, margin=dict(l=0, r=0, t=30, b=40),
@@ -592,11 +605,24 @@ def page_forecast():
             trend_filtered["period_str"] = trend_filtered["period"].dt.strftime("%Y-%m")
             trend_filtered["월"] = trend_filtered["period"].dt.month
             trend_filtered = trend_filtered[trend_filtered["월"].isin(선택_월)]
+            # 트렌드 → 추정 검색수 변환
+            y_col_trend = "ratio"
+            if not search_df.empty:
+                country_vol = search_df.groupby("국가")["총검색수"].sum().to_dict()
+                est = []
+                for _, row in trend_filtered.iterrows():
+                    vol = country_vol.get(row["국가"], 0)
+                    ct = trend_filtered[trend_filtered["국가"] == row["국가"]]
+                    ref = ct[ct["ratio"] > 0]["ratio"].iloc[-1] if len(ct[ct["ratio"] > 0]) > 0 else 0
+                    est.append(int(row["ratio"] * vol / ref) if ref > 0 and vol > 0 else 0)
+                trend_filtered["추정검색수"] = est
+                if sum(est) > 0:
+                    y_col_trend = "추정검색수"
             fig = px.line(
-                trend_filtered, x="period_str", y="ratio", color="국가",
+                trend_filtered, x="period_str", y=y_col_trend, color="국가",
                 markers=True, color_discrete_map=color_map,
                 category_orders={"국가": 데이터_국가},
-                labels={"period_str": "", "ratio": ""},
+                labels={"period_str": "", y_col_trend: ""},
             )
             fig.update_layout(
                 height=420, margin=dict(l=0, r=0, t=30, b=40),
