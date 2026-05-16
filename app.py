@@ -149,19 +149,23 @@ def get_country_color_map(countries):
 # ── CSS ─────────────────────────────────────────────
 st.markdown("""
 <style>
-/* Sidebar — Klook Brand */
+/* Sidebar — Klook Brand (dark bg for logo visibility) */
 section[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #FF5722 0%, #E64A19 50%, #BF360C 100%);
+    background: linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
     min-width: 250px; max-width: 250px;
 }
 section[data-testid="stSidebar"] .stMarkdown, section[data-testid="stSidebar"] label,
 section[data-testid="stSidebar"] span, section[data-testid="stSidebar"] p {
-    color: #fff3e0 !important;
+    color: #e0e0e0 !important;
 }
 section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
     max-height: 260px; overflow-y: auto;
 }
-section[data-testid="stSidebar"] hr { border-color: rgba(255,255,255,0.2) !important; }
+section[data-testid="stSidebar"] hr { border-color: rgba(255,255,255,0.15) !important; }
+/* Hide fullscreen button on sidebar images */
+section[data-testid="stSidebar"] button[title="View fullscreen"] { display: none !important; }
+/* Center sidebar image */
+section[data-testid="stSidebar"] [data-testid="stImage"] { text-align: center; display: flex; justify-content: center; }
 /* Sidebar nav buttons */
 section[data-testid="stSidebar"] .stButton > button {
     background: transparent !important;
@@ -179,7 +183,7 @@ section[data-testid="stSidebar"] .stButton > button:hover {
     color: #ffffff !important;
 }
 section[data-testid="stSidebar"] .stButton > button[kind="primary"] {
-    background: rgba(255,255,255,0.25) !important;
+    background: #FF5722 !important;
     color: #ffffff !important;
     font-weight: 600 !important;
 }
