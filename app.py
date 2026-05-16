@@ -897,13 +897,42 @@ def page_query():
                 start_str, end_str = str(기간[0]), str(기간[1])
                 trend_df = naver_datalab.fetch_trend(selected_own, start_str, end_str, time_unit="month")
                 if not trend_df.empty:
-                    fig = px.line(trend_df, x="period", y="ratio", color="keyword", markers=True,
-                                  labels={"period": "", "ratio": "", "keyword": "키워드"})
+                    # 트렌드 지수 → 추정 검색수 변환
+                    # 공식: factor = 월평균검색수 ÷ 기준월트렌드값, 추정검색수 = 트렌드값 × factor
+                    y_col, y_label = "ratio", "트렌드 지수"
+                    if naver_searchad.is_available():
+                        sa_df = naver_searchad.get_keyword_stats(selected_own)
+                        if not sa_df.empty and "relKeyword" in sa_df.columns:
+                            sa_df["_clean"] = sa_df["relKeyword"].str.lower().str.replace(" ", "", regex=False)
+                            sa_df["_total"] = sa_df.get("monthlyPcQcCnt", 0) + sa_df.get("monthlyMobileQcCnt", 0)
+                            kw_vol = {}
+                            for _, r in sa_df.iterrows():
+                                kw_vol[r["_clean"]] = int(r["_total"])
+                            trend_df["_clean"] = trend_df["keyword"].str.lower().str.replace(" ", "", regex=False)
+                            trend_df["월평균검색수"] = trend_df["_clean"].map(kw_vol).fillna(0)
+                            if trend_df["월평균검색수"].sum() > 0:
+                                # 기준월 = 각 키워드의 가장 마지막 유효 트렌드값
+                                estimated = []
+                                for _, row in trend_df.iterrows():
+                                    kw_clean = row["_clean"]
+                                    vol = kw_vol.get(kw_clean, 0)
+                                    kw_trends = trend_df[trend_df["_clean"] == kw_clean]
+                                    ref_ratio = kw_trends[kw_trends["ratio"] > 0]["ratio"].iloc[-1] if len(kw_trends[kw_trends["ratio"] > 0]) > 0 else 0
+                                    if ref_ratio > 0 and vol > 0:
+                                        factor = vol / ref_ratio
+                                        estimated.append(int(row["ratio"] * factor))
+                                    else:
+                                        estimated.append(0)
+                                trend_df["추정검색수"] = estimated
+                                y_col, y_label = "추정검색수", "추정 검색수"
+
+                    fig = px.line(trend_df, x="period", y=y_col, color="keyword", markers=True,
+                                  labels={"period": "", y_col: "", "keyword": "키워드"})
                     fig.update_layout(
                         height=400, margin=dict(t=30, b=40),
                         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
                         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
-                        xaxis=dict(title=""), yaxis=dict(title="", tickformat=","),
+                        xaxis=dict(title=""), yaxis=dict(title=y_label, tickformat=","),
                     )
                     st.plotly_chart(fig, use_container_width=True)
                 else:
@@ -1068,9 +1097,29 @@ def page_query():
             trend_df = naver_datalab.fetch_trend(selected_comp_kw, start_str, end_str, time_unit="month")
             if not trend_df.empty:
                 trend_df["구분"] = trend_df["keyword"].apply(lambda x: "자사" if x in own_kw else "경쟁사")
-                fig = px.line(trend_df, x="period", y="ratio", color="keyword",
+                # 추정 검색수 변환
+                y_col = "ratio"
+                if naver_searchad.is_available():
+                    sa_df = naver_searchad.get_keyword_stats(selected_comp_kw)
+                    if not sa_df.empty and "relKeyword" in sa_df.columns:
+                        sa_df["_clean"] = sa_df["relKeyword"].str.lower().str.replace(" ", "", regex=False)
+                        sa_df["_total"] = sa_df.get("monthlyPcQcCnt", 0) + sa_df.get("monthlyMobileQcCnt", 0)
+                        kw_vol = {}
+                        for _, r in sa_df.iterrows():
+                            kw_vol[r["_clean"]] = int(r["_total"])
+                        trend_df["_clean"] = trend_df["keyword"].str.lower().str.replace(" ", "", regex=False)
+                        estimated = []
+                        for _, row in trend_df.iterrows():
+                            vol = kw_vol.get(row["_clean"], 0)
+                            kw_t = trend_df[trend_df["_clean"] == row["_clean"]]
+                            ref = kw_t[kw_t["ratio"] > 0]["ratio"].iloc[-1] if len(kw_t[kw_t["ratio"] > 0]) > 0 else 0
+                            estimated.append(int(row["ratio"] * vol / ref) if ref > 0 and vol > 0 else 0)
+                        trend_df["추정검색수"] = estimated
+                        if sum(estimated) > 0:
+                            y_col = "추정검색수"
+                fig = px.line(trend_df, x="period", y=y_col, color="keyword",
                               line_dash="구분", markers=True,
-                              labels={"period": "", "ratio": "", "keyword": "키워드"})
+                              labels={"period": "", y_col: "", "keyword": "키워드"})
                 fig.update_layout(
                     height=400, margin=dict(t=30, b=40),
                     plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
