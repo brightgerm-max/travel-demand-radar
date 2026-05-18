@@ -367,7 +367,8 @@ def page_forecast():
 
     with st.container(border=True):
         # 1행: 연도
-        선택_연도 = st.selectbox("연도", [2024, 2025, 2026], index=2, key="fc_year")
+        연도_목록 = list(range(2016, 2027))
+        선택_연도 = st.selectbox("연도", 연도_목록, index=len(연도_목록)-1, key="fc_year")
 
         # 2행: 월 선택
         월_선택수 = sum(1 for m in 월_목록 if st.session_state.get(f"fc_m_{m}", True))
