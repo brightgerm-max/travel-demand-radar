@@ -54,11 +54,12 @@ def get_keyword_stats(keywords, show_detail=1):
         return pd.DataFrame()
 
     all_results = []
-    # Process one keyword at a time; remove spaces (API rejects keywords with spaces)
-    for kw in keywords:
-        clean_kw = kw.replace(" ", "")
+    # Remove spaces from keywords, then batch 5 at a time (comma-separated)
+    clean_keywords = [kw.replace(" ", "") for kw in keywords]
+    for i in range(0, len(clean_keywords), 5):
+        batch = clean_keywords[i:i+5]
         params = {
-            "hintKeywords": clean_kw,
+            "hintKeywords": ",".join(batch),
             "showDetail": show_detail,
         }
         try:
@@ -72,7 +73,7 @@ def get_keyword_stats(keywords, show_detail=1):
             data = resp.json()
             all_results.extend(data.get("keywordList", []))
         except Exception as e:
-            print(f"[SearchAd API Error] '{kw}': {e}")
+            print(f"[SearchAd API Error] batch {i//5}: {e}")
             continue
 
     if not all_results:
