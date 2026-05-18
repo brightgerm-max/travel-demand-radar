@@ -1054,7 +1054,11 @@ def page_forecast():
     all_insights.sort(key=lambda x: -x[5])
 
     if all_insights:
-        # YoY 필터일 때 성장/하락 그룹 분리
+        # ⚡ 급등/급락 탭 전용 노트
+        if insight_filter == "⚡ 급등/급락":
+            st.caption("※ ±10% 이상 변동이 있는 항목만 표시됩니다.")
+
+        # 📊 YoY: 성장/하락 그룹 분리
         if insight_filter == "📊 YoY 성장률":
             yoy_up = [i for i in all_insights if i[0] == "yoy" and "+" in i[3]]
             yoy_down = [i for i in all_insights if i[0] == "yoy" and "-" in i[3]]
@@ -1068,11 +1072,27 @@ def page_forecast():
                 for css_class, badge, country, title, body, _ in yoy_down:
                     body_html = body.replace("\n", "<br>")
                     st.markdown(f'<div class="insight-card drop"><div class="insight-title">{badge} {country} — {title}</div><div class="insight-body">{body_html}</div></div>', unsafe_allow_html=True)
+
+        # 🔮 계절성 예측: 예측 월별 그룹
+        elif insight_filter == "🔮 계절성 예측":
+            from collections import defaultdict
+            month_groups = defaultdict(list)
+            for item in all_insights:
+                # title에서 월 추출 (예: "전년 패턴 기반 +46% 상승 전망")
+                # badge에서 월 추출 (예: "🔮 7월 상승 예상")
+                month_groups[item[1]].append(item)
+            for group_badge in sorted(month_groups.keys()):
+                items = month_groups[group_badge]
+                st.markdown(f"**{group_badge}**")
+                for css_class, badge, country, title, body, _ in items:
+                    body_html = body.replace("\n", "<br>")
+                    st.markdown(f'<div class="insight-card {css_class}"><div class="insight-title">{country} — {title}</div><div class="insight-body">{body_html}</div></div>', unsafe_allow_html=True)
+
+        # 기타 탭: 기본 렌더링
         else:
             for css_class, badge, country, title, body, _ in all_insights:
                 body_html = body.replace("\n", "<br>")
                 st.markdown(f'<div class="insight-card {css_class}"><div class="insight-title">{badge} {country} — {title}</div><div class="insight-body">{body_html}</div></div>', unsafe_allow_html=True)
-        st.caption("※ ±10% 이상 변동이 있는 항목만 표시됩니다.")
     else:
         st.write("선택한 유형의 인사이트가 없습니다.")
 
