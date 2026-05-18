@@ -111,7 +111,7 @@ def load_searchad_data(_keywords_tuple):
             })
     return pd.DataFrame(rows) if rows else pd.DataFrame()
 
-@st.cache_data(ttl=86400, show_spinner="📈 트렌드 데이터 조회 중...")
+@st.cache_data(ttl=21600, show_spinner="📈 트렌드 데이터 조회 중...")  # 6시간 (당월 데이터 매일 갱신)
 def load_trend_data(_keywords_tuple, start_date, end_date):
     """데이터랩 API로 국가별 키워드 트렌드 조회. 5개국씩 배치."""
     if not naver_datalab.is_available():
