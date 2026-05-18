@@ -862,7 +862,7 @@ def page_forecast():
         mom_score = 0
         mom_css = "up"
 
-        # 2a. 완료된 마지막 2개월 비교
+        # 2a. 완료된 마지막 2개월 비교 (±10% 이상만)
         if 선택_연도 >= _cur_year and len(c_vals) >= 3:
             completed = [(c_months[i], c_vals[i]) for i in range(len(c_vals)) if not (int(c_months[i]) == _cur_month and 선택_연도 == _cur_year)]
             if len(completed) >= 2:
@@ -870,29 +870,31 @@ def page_forecast():
                 m_cur, v_cur = completed[-1]
                 if v_prev > 0 and v_cur >= MIN_TREND:
                     mom_rate = ((v_cur - v_prev) / v_prev)
-                    vol = country_vol_map.get(country, 0)
-                    ref_ratio = v_cur if v_cur > 0 else 1
-                    factor = vol / ref_ratio if ref_ratio > 0 and vol > 0 else 0
-                    est_prev = int(v_prev * factor) if factor > 0 else 0
-                    est_cur = int(v_cur * factor) if factor > 0 else 0
-                    icon = "📈" if mom_rate > 0 else "📉"
-                    if factor > 0:
-                        mom_lines.append(f"{icon} {int(m_prev)}월→{int(m_cur)}월: {est_prev:,} → {est_cur:,} ({mom_rate*100:+.0f}%)")
-                    else:
-                        mom_lines.append(f"{icon} {int(m_prev)}월→{int(m_cur)}월: {mom_rate*100:+.0f}%")
-                    mom_score = max(mom_score, abs(mom_rate) * 100)
-                    if mom_rate < 0:
-                        mom_css = "drop"
+                    if abs(mom_rate) >= 0.10:
+                        vol = country_vol_map.get(country, 0)
+                        ref_ratio = v_cur if v_cur > 0 else 1
+                        factor = vol / ref_ratio if ref_ratio > 0 and vol > 0 else 0
+                        est_prev = int(v_prev * factor) if factor > 0 else 0
+                        est_cur = int(v_cur * factor) if factor > 0 else 0
+                        icon = "📈" if mom_rate > 0 else "📉"
+                        if factor > 0:
+                            mom_lines.append(f"{icon} {int(m_prev)}월→{int(m_cur)}월: {est_prev:,} → {est_cur:,} ({mom_rate*100:+.0f}%)")
+                        else:
+                            mom_lines.append(f"{icon} {int(m_prev)}월→{int(m_cur)}월: {mom_rate*100:+.0f}%")
+                        mom_score = max(mom_score, abs(mom_rate) * 100)
+                        if mom_rate < 0:
+                            mom_css = "drop"
         elif len(c_vals) >= 2:
             if c_vals[-2] > 0 and c_vals[-1] >= MIN_TREND:
                 mom_rate = ((c_vals[-1] - c_vals[-2]) / c_vals[-2])
-                icon = "📈" if mom_rate > 0 else "📉"
-                mom_lines.append(f"{icon} {int(c_months[-2])}월→{int(c_months[-1])}월: {mom_rate*100:+.0f}%")
-                mom_score = max(mom_score, abs(mom_rate) * 100)
-                if mom_rate < 0:
-                    mom_css = "drop"
+                if abs(mom_rate) >= 0.10:
+                    icon = "📈" if mom_rate > 0 else "📉"
+                    mom_lines.append(f"{icon} {int(c_months[-2])}월→{int(c_months[-1])}월: {mom_rate*100:+.0f}%")
+                    mom_score = max(mom_score, abs(mom_rate) * 100)
+                    if mom_rate < 0:
+                        mom_css = "drop"
 
-        # 2b. 당월 동기간 비교 (현재 연도만)
+        # 2b. 당월 동기간 비교 (±10% 이상만, 현재 연도만)
         if 선택_연도 >= _cur_year and not daily_trend_df.empty and _cur_month > 1:
             c_daily = daily_trend_df[daily_trend_df["국가"] == country].copy()
             if not c_daily.empty and "period" in c_daily.columns:
@@ -907,17 +909,18 @@ def page_forecast():
                     cur_sum = cur_m_data["ratio"].sum()
                     if prev_sum > 0:
                         same_rate = ((cur_sum - prev_sum) / prev_sum)
-                        vol2 = country_vol_map.get(country, 0)
-                        prev_full = c_daily[c_daily["month"] == _cur_month - 1]["ratio"].sum()
-                        factor2 = vol2 / prev_full if prev_full > 0 and vol2 > 0 else 0
-                        est_p = int(prev_sum * factor2) if factor2 > 0 else 0
-                        est_c = int(cur_sum * factor2) if factor2 > 0 else 0
-                        icon2 = "📈" if same_rate > 0 else "📉"
-                        if factor2 > 0:
-                            mom_lines.append(f"{icon2} {_cur_month-1}월 1~{_cur_day}일: {est_p:,} vs {_cur_month}월 1~{_cur_day}일: {est_c:,} ({same_rate*100:+.0f}%)")
-                        else:
-                            mom_lines.append(f"{icon2} 당월 동기간: {same_rate*100:+.0f}%")
-                        mom_score = max(mom_score, abs(same_rate) * 80)
+                        if abs(same_rate) >= 0.10:
+                            vol2 = country_vol_map.get(country, 0)
+                            prev_full = c_daily[c_daily["month"] == _cur_month - 1]["ratio"].sum()
+                            factor2 = vol2 / prev_full if prev_full > 0 and vol2 > 0 else 0
+                            est_p = int(prev_sum * factor2) if factor2 > 0 else 0
+                            est_c = int(cur_sum * factor2) if factor2 > 0 else 0
+                            icon2 = "📈" if same_rate > 0 else "📉"
+                            if factor2 > 0:
+                                mom_lines.append(f"{icon2} {_cur_month-1}월 1~{_cur_day}일: {est_p:,} vs {_cur_month}월 1~{_cur_day}일: {est_c:,} ({same_rate*100:+.0f}%)")
+                            else:
+                                mom_lines.append(f"{icon2} 당월 동기간: {same_rate*100:+.0f}%")
+                            mom_score = max(mom_score, abs(same_rate) * 80)
 
         # MoM 카드 생성 (라인이 있을 때만)
         if mom_lines and mom_score >= 10:
@@ -1044,9 +1047,25 @@ def page_forecast():
     all_insights.sort(key=lambda x: -x[5])
 
     if all_insights:
-        for css_class, badge, country, title, body, _ in all_insights:
-            body_html = body.replace("\n", "<br>")
-            st.markdown(f'<div class="insight-card {css_class}"><div class="insight-title">{badge} {country} — {title}</div><div class="insight-body">{body_html}</div></div>', unsafe_allow_html=True)
+        # YoY 필터일 때 성장/하락 그룹 분리
+        if insight_filter == "📊 YoY 성장률":
+            yoy_up = [i for i in all_insights if i[0] == "yoy" and "성장" in i[1]]
+            yoy_down = [i for i in all_insights if i[0] == "yoy" and "감소" in i[1]]
+            if yoy_up:
+                st.markdown("**📈 성장 국가**")
+                for css_class, badge, country, title, body, _ in yoy_up:
+                    body_html = body.replace("\n", "<br>")
+                    st.markdown(f'<div class="insight-card surge"><div class="insight-title">{badge} {country} — {title}</div><div class="insight-body">{body_html}</div></div>', unsafe_allow_html=True)
+            if yoy_down:
+                st.markdown("**📉 하락 국가**")
+                for css_class, badge, country, title, body, _ in yoy_down:
+                    body_html = body.replace("\n", "<br>")
+                    st.markdown(f'<div class="insight-card drop"><div class="insight-title">{badge} {country} — {title}</div><div class="insight-body">{body_html}</div></div>', unsafe_allow_html=True)
+        else:
+            for css_class, badge, country, title, body, _ in all_insights:
+                body_html = body.replace("\n", "<br>")
+                st.markdown(f'<div class="insight-card {css_class}"><div class="insight-title">{badge} {country} — {title}</div><div class="insight-body">{body_html}</div></div>', unsafe_allow_html=True)
+        st.caption("※ ±10% 이상 변동이 있는 항목만 표시됩니다.")
     else:
         st.write("선택한 유형의 인사이트가 없습니다.")
 
