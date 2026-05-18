@@ -32,7 +32,7 @@ if _env_path.exists():
             os.environ.setdefault(k.strip(), v.strip())
 
 # ── 페이지 설정 ─────────────────────────────────────
-st.set_page_config(page_title="Klook Travel Demand Radar", layout="wide", page_icon="🌏")
+st.set_page_config(page_title="Klook Travel Demand Radar", layout="wide", page_icon="klook_logo.png")
 
 # ── 경로 상수 ───────────────────────────────────────
 BASE_DIR = Path(__file__).parent
