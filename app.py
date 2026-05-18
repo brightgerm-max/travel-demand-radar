@@ -850,48 +850,50 @@ def page_forecast():
                         all_insights.append(("yoy", f"📊 YoY {direction}", country,
                             f"{prev_year}년 대비 {yoy_rate:+.1f}%", body, abs(yoy_rate)))
 
-        # ── 2. MoM 급등/급락 ──────────────────────
+        # ── 2. MoM 급등/급락 (국가별 통합 카드) ──────
         from datetime import date as _dt
         _today = _dt.today()
         _cur_year = _today.year
         _cur_month = _today.month
         _cur_day = _today.day
+        country_vol_map = search_df.groupby("국가")["총검색수"].sum().to_dict() if not search_df.empty else {}
+
+        mom_lines = []  # 이 국가의 MoM 라인들
+        mom_score = 0
+        mom_css = "up"
 
         # 2a. 완료된 마지막 2개월 비교
         if 선택_연도 >= _cur_year and len(c_vals) >= 3:
-            # 당월 제외, 완료된 마지막 2개월
             completed = [(c_months[i], c_vals[i]) for i in range(len(c_vals)) if not (int(c_months[i]) == _cur_month and 선택_연도 == _cur_year)]
             if len(completed) >= 2:
                 m_prev, v_prev = completed[-2]
                 m_cur, v_cur = completed[-1]
                 if v_prev > 0 and v_cur >= MIN_TREND:
                     mom_rate = ((v_cur - v_prev) / v_prev)
-                    if abs(mom_rate) >= 0.15:
-                        # 추정 검색수 변환
-                        country_vol = search_df.groupby("국가")["총검색수"].sum().to_dict() if not search_df.empty else {}
-                        vol = country_vol.get(country, 0)
-                        ref_ratio = v_cur if v_cur > 0 else 1
-                        factor = vol / ref_ratio if ref_ratio > 0 and vol > 0 else 0
-                        est_prev = int(v_prev * factor) if factor > 0 else 0
-                        est_cur = int(v_cur * factor) if factor > 0 else 0
-                        badge = "⚡ 급등" if mom_rate > 0 else "📉 급락"
-                        css = "surge" if mom_rate > 0 else "drop"
-                        body = f"{int(m_prev)}월: {est_prev:,} → {int(m_cur)}월: {est_cur:,} (추정 검색수)" if factor > 0 else f"{int(m_prev)}월 → {int(m_cur)}월"
-                        all_insights.append((css, badge, country,
-                            f"{int(m_prev)}월→{int(m_cur)}월 {mom_rate*100:+.0f}%", body, abs(mom_rate)*100))
+                    vol = country_vol_map.get(country, 0)
+                    ref_ratio = v_cur if v_cur > 0 else 1
+                    factor = vol / ref_ratio if ref_ratio > 0 and vol > 0 else 0
+                    est_prev = int(v_prev * factor) if factor > 0 else 0
+                    est_cur = int(v_cur * factor) if factor > 0 else 0
+                    icon = "📈" if mom_rate > 0 else "📉"
+                    if factor > 0:
+                        mom_lines.append(f"{icon} {int(m_prev)}월→{int(m_cur)}월: {est_prev:,} → {est_cur:,} ({mom_rate*100:+.0f}%)")
+                    else:
+                        mom_lines.append(f"{icon} {int(m_prev)}월→{int(m_cur)}월: {mom_rate*100:+.0f}%")
+                    mom_score = max(mom_score, abs(mom_rate) * 100)
+                    if mom_rate < 0:
+                        mom_css = "drop"
         elif len(c_vals) >= 2:
-            # 과거 연도: 모든 월 완료, 기존 로직
             if c_vals[-2] > 0 and c_vals[-1] >= MIN_TREND:
                 mom_rate = ((c_vals[-1] - c_vals[-2]) / c_vals[-2])
-                if abs(mom_rate) >= 0.15:
-                    badge = "⚡ 급등" if mom_rate > 0 else "📉 급락"
-                    css = "surge" if mom_rate > 0 else "drop"
-                    body = f"{int(c_months[-2])}월 → {int(c_months[-1])}월"
-                    all_insights.append((css, badge, country,
-                        f"전월 대비 {mom_rate*100:+.0f}%", body, abs(mom_rate)*100))
+                icon = "📈" if mom_rate > 0 else "📉"
+                mom_lines.append(f"{icon} {int(c_months[-2])}월→{int(c_months[-1])}월: {mom_rate*100:+.0f}%")
+                mom_score = max(mom_score, abs(mom_rate) * 100)
+                if mom_rate < 0:
+                    mom_css = "drop"
 
         # 2b. 당월 동기간 비교 (현재 연도만)
-        if 선택_연도 >= _cur_year and not daily_trend_df.empty:
+        if 선택_연도 >= _cur_year and not daily_trend_df.empty and _cur_month > 1:
             c_daily = daily_trend_df[daily_trend_df["국가"] == country].copy()
             if not c_daily.empty and "period" in c_daily.columns:
                 c_daily["period"] = pd.to_datetime(c_daily["period"], errors="coerce")
@@ -904,22 +906,24 @@ def page_forecast():
                     prev_sum = prev_m_data["ratio"].sum()
                     cur_sum = cur_m_data["ratio"].sum()
                     if prev_sum > 0:
-                        same_period_rate = ((cur_sum - prev_sum) / prev_sum)
-                        if abs(same_period_rate) >= 0.1:
-                            # 추정 검색수 변환
-                            country_vol2 = search_df.groupby("국가")["총검색수"].sum().to_dict() if not search_df.empty else {}
-                            vol2 = country_vol2.get(country, 0)
-                            # 전월 전체 트렌드 합으로 factor 계산
-                            prev_full = c_daily[c_daily["month"] == _cur_month - 1]["ratio"].sum()
-                            factor2 = vol2 / prev_full if prev_full > 0 and vol2 > 0 else 0
-                            est_prev2 = int(prev_sum * factor2) if factor2 > 0 else 0
-                            est_cur2 = int(cur_sum * factor2) if factor2 > 0 else 0
-                            badge2 = "⚡ 급등" if same_period_rate > 0 else "📉 급락"
-                            css2 = "surge" if same_period_rate > 0 else "drop"
-                            body2 = (f"{_cur_month-1}월 1~{_cur_day}일: {est_prev2:,} vs {_cur_month}월 1~{_cur_day}일: {est_cur2:,} (추정 검색수)" if factor2 > 0
-                                     else f"{_cur_month-1}월 1~{_cur_day}일 vs {_cur_month}월 1~{_cur_day}일")
-                            all_insights.append((css2, f"{badge2} 당월속보", country,
-                                f"당월 동기간 {same_period_rate*100:+.0f}%", body2, abs(same_period_rate)*80))
+                        same_rate = ((cur_sum - prev_sum) / prev_sum)
+                        vol2 = country_vol_map.get(country, 0)
+                        prev_full = c_daily[c_daily["month"] == _cur_month - 1]["ratio"].sum()
+                        factor2 = vol2 / prev_full if prev_full > 0 and vol2 > 0 else 0
+                        est_p = int(prev_sum * factor2) if factor2 > 0 else 0
+                        est_c = int(cur_sum * factor2) if factor2 > 0 else 0
+                        icon2 = "📈" if same_rate > 0 else "📉"
+                        if factor2 > 0:
+                            mom_lines.append(f"{icon2} {_cur_month-1}월 1~{_cur_day}일: {est_p:,} vs {_cur_month}월 1~{_cur_day}일: {est_c:,} ({same_rate*100:+.0f}%)")
+                        else:
+                            mom_lines.append(f"{icon2} 당월 동기간: {same_rate*100:+.0f}%")
+                        mom_score = max(mom_score, abs(same_rate) * 80)
+
+        # MoM 카드 생성 (라인이 있을 때만)
+        if mom_lines and mom_score >= 10:
+            body = "\n".join(mom_lines)
+            all_insights.append((mom_css, "⚡ MoM", country,
+                "전월 대비 변동", body, mom_score))
 
         # ── 3. 계절성 예측 (현재/미래 연도만, 의미 있는 국가만) ──
         from datetime import date as _date
@@ -1022,7 +1026,7 @@ def page_forecast():
     # ── 인사이트 필터링 & 렌더링 ──────────────
     type_map = {
         "📊 YoY 성장률": "yoy",
-        "⚡ 급등/급락": ["surge", "drop"],
+        "⚡ 급등/급락": ["surge", "drop", "up"],
         "🔮 계절성 예측": "predict",
         "🏆 순위 변동": "rank",
         "📉 하락 경고": "down",
