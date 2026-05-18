@@ -699,8 +699,8 @@ def page_forecast():
 
     st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
 
-    # ── 섹션 5: 심층 인사이트 ─────────────────────
-    st.markdown('<div class="section-header">💡 심층 인사이트</div>', unsafe_allow_html=True)
+    # ── 섹션 5: 인사이트 ───────────────────────────
+    st.markdown('<div class="section-header">💡 인사이트</div>', unsafe_allow_html=True)
 
     if trend_api_df.empty:
         st.write("트렌드 데이터가 없어 인사이트를 생성할 수 없습니다.")
@@ -748,9 +748,7 @@ def page_forecast():
                     yoy_rate = ((cur_avg - prev_avg) / prev_avg) * 100
                     if abs(yoy_rate) >= 5 and cur_avg >= MIN_TREND:
                         direction = "성장" if yoy_rate > 0 else "감소"
-                        body = (f"올해({선택_연도}) 검색 트렌드 평균: {cur_avg:.0f}\n"
-                                f"전년({prev_year}) 동기 평균: {prev_avg:.0f}\n"
-                                f"→ 전년 대비 검색 수요가 {abs(yoy_rate):.0f}% {'증가' if yoy_rate > 0 else '감소'}")
+                        body = (f"→ 전년 대비 검색 수요가 {abs(yoy_rate):.0f}% {'증가' if yoy_rate > 0 else '감소'}")
                         all_insights.append(("yoy", f"📊 YoY {direction}", country,
                             f"전년 동기 대비 {yoy_rate:+.1f}%", body, abs(yoy_rate)))
 
