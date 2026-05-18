@@ -1060,6 +1060,9 @@ def page_forecast():
 
         # 📊 YoY: 성장/하락 그룹 분리
         if insight_filter == "📊 YoY 성장률":
+            from datetime import date as _note_dt
+            _note_month = _note_dt.today().month
+            st.caption(f"※ {선택_연도}년 완료된 월(1~{_note_month-1}월)과 전년 동기간을 비교합니다. 당월({_note_month}월)은 미완료로 제외됩니다.")
             yoy_up = [i for i in all_insights if i[0] == "yoy" and "+" in i[3]]
             yoy_down = [i for i in all_insights if i[0] == "yoy" and "-" in i[3]]
             if yoy_up:
