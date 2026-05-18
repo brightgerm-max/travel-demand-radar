@@ -784,25 +784,27 @@ def page_forecast():
                 all_insights.append((css, badge, country,
                     f"전월 대비 {mom_rate*100:+.0f}%", body, abs(mom_rate)*100))
 
-        # ── 3. 계절성 예측 (트렌드 값이 의미 있는 국가만) ──
-        if len(prev_vals) >= 3 and len(c_vals) >= 1 and float(np.mean(c_vals)) >= MIN_TREND:
-            cur_last_month = int(c_months[-1]) if len(c_months) > 0 else 0
+        # ── 3. 계절성 예측 (현재/미래 연도만, 의미 있는 국가만) ──
+        from datetime import date as _date
+        _actual_month = _date.today().month
+        _actual_year = _date.today().year
+        _ref_month = _actual_month if 선택_연도 >= _actual_year else int(c_months[-1]) if len(c_months) > 0 else 0
+        if len(prev_vals) >= 3 and len(c_vals) >= 1 and float(np.mean(c_vals)) >= MIN_TREND and 선택_연도 >= _actual_year:
             future_months = []
-            for fm in range(cur_last_month + 1, min(cur_last_month + 3, 13)):
+            for fm in range(_ref_month + 1, min(_ref_month + 3, 13)):
                 idx = np.where(prev_months == fm)[0]
                 if len(idx) > 0:
                     future_months.append((fm, float(prev_vals[idx[0]])))
-            cur_month_idx = np.where(prev_months == cur_last_month)[0]
-            if future_months and len(cur_month_idx) > 0:
-                prev_base = float(prev_vals[cur_month_idx[0]])
+            prev_ref_idx = np.where(prev_months == _ref_month)[0]
+            if future_months and len(prev_ref_idx) > 0:
+                prev_base = float(prev_vals[prev_ref_idx[0]])
                 peak_month, peak_val = max(future_months, key=lambda x: x[1])
                 if prev_base >= MIN_TREND:
                     expected_change = ((peak_val - prev_base) / prev_base) * 100
                     if abs(expected_change) >= 20:
                         direction = "상승" if expected_change > 0 else "하락"
-                        body = (f"전년도 {cur_last_month}월→{peak_month}월: 검색 트렌드 {prev_base:.0f} → {peak_val:.0f} ({expected_change:+.0f}%)\n"
-                                f"올해 {cur_last_month}월 현재 트렌드: {c_vals[-1]:.0f}\n"
-                                f"→ 전년 패턴이 반복되면 {peak_month}월에 {direction} 예상")
+                        body = (f"전년({prev_year}년) {_ref_month}월→{peak_month}월: {expected_change:+.0f}% {direction}\n"
+                                f"→ 전년 패턴이 반복되면 {선택_연도}년 {peak_month}월에 {direction} 예상")
                         all_insights.append(("predict", f"🔮 {peak_month}월 {direction} 예상", country,
                             f"전년 패턴 기반 {expected_change:+.0f}% {direction} 전망", body, abs(expected_change)))
 
@@ -825,23 +827,30 @@ def page_forecast():
                     f"3개월 연속 하락 ({total_drop:.0f}%)", body, abs(total_drop)))
 
         # ── 6. 기회 발견 (피크 시즌 접근, 의미 있는 국가만) ──
-        if len(prev_vals) >= 3 and len(c_vals) >= 1 and float(np.mean(prev_vals)) >= MIN_TREND:
+        # 현재 연도의 실제 최근월 기준으로만 판단 (과거 연도 분석 시 비활성)
+        from datetime import date
+        actual_year = date.today().year
+        actual_month = date.today().month
+        if len(prev_vals) >= 3 and len(c_vals) >= 1 and float(np.mean(prev_vals)) >= MIN_TREND and 선택_연도 >= actual_year:
             peak_idx = int(np.argmax(prev_vals))
             peak_month = int(prev_months[peak_idx]) if peak_idx < len(prev_months) else 0
             peak_val = float(prev_vals[peak_idx])
-            cur_last = int(c_months[-1]) if len(c_months) > 0 else 0
-            # 피크까지 남은 개월 (연말→연초 wrap 처리)
-            months_to_peak = (peak_month - cur_last) % 12
+            # 실제 현재 월 기준
+            ref_month = actual_month if 선택_연도 == actual_year else int(c_months[-1])
+            months_to_peak = (peak_month - ref_month) % 12
             if 1 <= months_to_peak <= 4 and peak_val > 0:
-                cur_same_idx = np.where(prev_months == cur_last)[0]
+                cur_same_idx = np.where(prev_months == ref_month)[0]
                 prev_same_val = float(prev_vals[cur_same_idx[0]]) if len(cur_same_idx) > 0 else 0
-                if prev_same_val > 0:
-                    vs_prev = ((c_vals[-1] - prev_same_val) / prev_same_val) * 100
+                # 현재 연도 해당 월 데이터가 있는지 확인
+                cur_month_idx = np.where(np.array(c_months) == ref_month)[0]
+                cur_month_val = float(c_vals[cur_month_idx[0]]) if len(cur_month_idx) > 0 else 0
+                if prev_same_val > 0 and cur_month_val > 0:
+                    vs_prev = ((cur_month_val - prev_same_val) / prev_same_val) * 100
                 else:
                     vs_prev = 0
-                body = (f"전년 피크: {peak_month}월 (트렌드 {peak_val:.0f})\n"
-                        f"현재 {cur_last}월: {c_vals[-1]:.1f}" +
-                        (f" (전년 동월 대비 {vs_prev:+.1f}%)" if prev_same_val > 0 else ""))
+                body = (f"전년({prev_year}년) 피크: {peak_month}월\n"
+                        f"{선택_연도}년 {ref_month}월 기준, 피크까지 {months_to_peak}개월 남음" +
+                        (f"\n전년 동월 대비 {vs_prev:+.1f}%" if vs_prev != 0 else ""))
                 all_insights.append(("opportunity", "💡 기회 발견", country,
                     f"피크 시즌 {months_to_peak}개월 전", body, 50 + abs(vs_prev)))
 
