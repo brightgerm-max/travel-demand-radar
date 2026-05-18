@@ -768,9 +768,9 @@ def page_forecast():
                     yoy_rate = ((cur_avg - prev_avg) / prev_avg) * 100
                     if abs(yoy_rate) >= 5 and cur_avg >= MIN_TREND:
                         direction = "성장" if yoy_rate > 0 else "감소"
-                        body = (f"→ 전년 대비 검색 수요가 {abs(yoy_rate):.0f}% {'증가' if yoy_rate > 0 else '감소'}")
+                        body = (f"{prev_year}년 대비 {선택_연도}년 검색 수요가 {abs(yoy_rate):.0f}% {'증가' if yoy_rate > 0 else '감소'}")
                         all_insights.append(("yoy", f"📊 YoY {direction}", country,
-                            f"전년 동기 대비 {yoy_rate:+.1f}%", body, abs(yoy_rate)))
+                            f"{prev_year}년 대비 {yoy_rate:+.1f}%", body, abs(yoy_rate)))
 
         # ── 2. MoM 급등/급락 (의미 있는 국가만) ──
         if len(c_vals) >= 2 and float(c_vals[-1]) >= MIN_TREND:
