@@ -834,13 +834,20 @@ def page_forecast():
             prev_vals = np.array([])
             prev_months = np.array([])
 
-        # ── 1. YoY 성장률 ──────────────────────
+        # ── 1. YoY 성장률 (완료된 월만 비교) ─────
+        from datetime import date as _yoy_dt
+        _yoy_cur_month = _yoy_dt.today().month
+        _yoy_cur_year = _yoy_dt.today().year
         if len(c_vals) >= 2 and len(prev_vals) >= 2:
-            # 올해 선택월과 전년 동일월 비교
-            cur_month_set = set(c_months)
-            prev_matching = [prev_vals[i] for i, m in enumerate(prev_months) if m in cur_month_set]
-            if prev_matching:
-                cur_avg = float(np.mean(c_vals))
+            # 당월 제외 (미완료), 완료된 월만 비교
+            if 선택_연도 >= _yoy_cur_year:
+                completed_months = set(int(m) for m in c_months if int(m) != _yoy_cur_month)
+            else:
+                completed_months = set(int(m) for m in c_months)
+            cur_completed = [c_vals[i] for i, m in enumerate(c_months) if int(m) in completed_months]
+            prev_matching = [prev_vals[i] for i, m in enumerate(prev_months) if int(m) in completed_months]
+            if cur_completed and prev_matching:
+                cur_avg = float(np.mean(cur_completed))
                 prev_avg = float(np.mean(prev_matching))
                 if prev_avg > 0:
                     yoy_rate = ((cur_avg - prev_avg) / prev_avg) * 100
