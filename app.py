@@ -84,9 +84,9 @@ def load_fallback_data():
 
 # ── API 기반 데이터 로더 (캐싱) ────────────────────
 @st.cache_data(ttl=86400, show_spinner="🔍 검색량 데이터 조회 중...")
-def load_searchad_data(_keywords_tuple):
+def load_searchad_data(keywords_tuple):
     """검색광고 API로 국가별 대표 키워드 월간 검색수 조회. 결과를 국가별로 집계."""
-    keywords_by_country = dict(_keywords_tuple)
+    keywords_by_country = dict(keywords_tuple)
     rows = []
     for country, kw_list in keywords_by_country.items():
         if not kw_list:
@@ -112,11 +112,11 @@ def load_searchad_data(_keywords_tuple):
     return pd.DataFrame(rows) if rows else pd.DataFrame()
 
 @st.cache_data(ttl=21600, show_spinner="📈 트렌드 데이터 조회 중...")  # 6시간 (당월 데이터 매일 갱신)
-def load_trend_data(_keywords_tuple, start_date, end_date):
+def load_trend_data(keywords_tuple, start_date, end_date):
     """데이터랩 API로 국가별 키워드 트렌드 조회. 5개국씩 배치."""
     if not naver_datalab.is_available():
         return pd.DataFrame()
-    keywords_by_country = dict(_keywords_tuple)
+    keywords_by_country = dict(keywords_tuple)
     countries = list(keywords_by_country.keys())
     all_dfs = []
     # 5개국씩 배치 (API 1회당 5개 keywordGroup 제한)
