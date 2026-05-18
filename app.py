@@ -1088,7 +1088,42 @@ def page_forecast():
                     body_html = body.replace("\n", "<br>")
                     st.markdown(f'<div class="insight-card {css_class}"><div class="insight-title">{country} — {title}</div><div class="insight-body">{body_html}</div></div>', unsafe_allow_html=True)
 
-        # 기타 탭: 기본 렌더링
+        # 🏆 순위 변동: 상승/하락 그룹
+        elif insight_filter == "🏆 순위 변동":
+            rank_up = [i for i in all_insights if "상승" in i[1]]
+            rank_down = [i for i in all_insights if "하락" in i[1]]
+            if rank_up:
+                st.markdown("**📈 순위 상승 국가**")
+                for css_class, badge, country, title, body, _ in rank_up:
+                    body_html = body.replace("\n", "<br>")
+                    st.markdown(f'<div class="insight-card surge"><div class="insight-title">{country} — {title}</div><div class="insight-body">{body_html}</div></div>', unsafe_allow_html=True)
+            if rank_down:
+                st.markdown("**📉 순위 하락 국가**")
+                for css_class, badge, country, title, body, _ in rank_down:
+                    body_html = body.replace("\n", "<br>")
+                    st.markdown(f'<div class="insight-card drop"><div class="insight-title">{country} — {title}</div><div class="insight-body">{body_html}</div></div>', unsafe_allow_html=True)
+
+        # 📉 하락 경고: 단일 그룹
+        elif insight_filter == "📉 하락 경고":
+            st.markdown("**📉 3개월 연속 하락 국가**")
+            for css_class, badge, country, title, body, _ in all_insights:
+                body_html = body.replace("\n", "<br>")
+                st.markdown(f'<div class="insight-card {css_class}"><div class="insight-title">{country} — {title}</div><div class="insight-body">{body_html}</div></div>', unsafe_allow_html=True)
+
+        # 💡 기회 발견: 피크 시즌별 그룹
+        elif insight_filter == "💡 기회 발견":
+            from collections import defaultdict
+            peak_groups = defaultdict(list)
+            for item in all_insights:
+                peak_groups[item[3]].append(item)  # title로 그룹 (예: "피크 시즌 1개월 전")
+            for group_title in sorted(peak_groups.keys()):
+                items = peak_groups[group_title]
+                st.markdown(f"**💡 {group_title}**")
+                for css_class, badge, country, title, body, _ in items:
+                    body_html = body.replace("\n", "<br>")
+                    st.markdown(f'<div class="insight-card {css_class}"><div class="insight-title">{country}</div><div class="insight-body">{body_html}</div></div>', unsafe_allow_html=True)
+
+        # 기타 탭 (전체 등): 기본 렌더링
         else:
             for css_class, badge, country, title, body, _ in all_insights:
                 body_html = body.replace("\n", "<br>")
