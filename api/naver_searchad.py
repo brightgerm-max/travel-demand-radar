@@ -54,27 +54,29 @@ def get_keyword_stats(keywords, show_detail=1):
         return pd.DataFrame()
 
     all_results = []
-    # Remove spaces from keywords, then batch 5 at a time (comma-separated)
+    # Remove spaces, batch 5 keywords, parallel 3 workers
+    import concurrent.futures
     clean_keywords = [kw.replace(" ", "") for kw in keywords]
-    for i in range(0, len(clean_keywords), 5):
-        batch = clean_keywords[i:i+5]
-        params = {
-            "hintKeywords": ",".join(batch),
-            "showDetail": show_detail,
-        }
-        try:
-            resp = requests.get(
-                f"https://api.searchad.naver.com{path}",
-                headers=_get_headers("GET", path),
-                params=params,
-                timeout=10,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            all_results.extend(data.get("keywordList", []))
-        except Exception as e:
-            print(f"[SearchAd API Error] batch {i//5}: {e}")
-            continue
+    batches = [clean_keywords[i:i+5] for i in range(0, len(clean_keywords), 5)]
+
+    def _fetch_batch(batch):
+        params = {"hintKeywords": ",".join(batch), "showDetail": show_detail}
+        resp = requests.get(
+            f"https://api.searchad.naver.com{path}",
+            headers=_get_headers("GET", path),
+            params=params, timeout=10,
+        )
+        resp.raise_for_status()
+        return resp.json().get("keywordList", [])
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        futures = [executor.submit(_fetch_batch, b) for b in batches]
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                all_results.extend(future.result())
+            except Exception as e:
+                print(f"[SearchAd API Error] {e}")
+                continue
 
     if not all_results:
         return pd.DataFrame()
