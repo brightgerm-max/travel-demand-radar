@@ -562,7 +562,7 @@ def page_forecast():
         st.dataframe(rank_display, use_container_width=True, height=380)
 
     with col_trend_map:
-        st.markdown("**📊 상위 국가 트렌드 (국가별 정규화)**")
+        st.markdown("**📊 상위 국가 트렌드 히트맵**")
         if not trend_api_df.empty:
             top5 = 국가순위[:5]
             t5_df = trend_api_df[trend_api_df["국가"].isin(top5)].copy()
@@ -575,20 +575,35 @@ def page_forecast():
                     c_max = t5_df.loc[mask, "ratio"].max()
                     if c_max > 0:
                         t5_df.loc[mask, "트렌드지수"] = (t5_df.loc[mask, "ratio"] / c_max * 100).round(1)
-                fig_trend12 = px.line(
-                    t5_df, x="period_str", y="트렌드지수", color="국가",
-                    markers=True, color_discrete_map=color_map,
-                    category_orders={"국가": top5},
-                    labels={"period_str": "", "트렌드지수": ""},
-                )
-                fig_trend12.update_layout(
-                    height=400, margin=dict(l=0, r=0, t=30, b=40),
+
+                # 히트맵 피벗: 국가(행) x 월(열)
+                heat_pivot = t5_df.pivot_table(index="국가", columns="period_str", values="트렌드지수", aggfunc="first").fillna(0)
+                heat_pivot = heat_pivot.reindex(index=top5)
+                months = sorted(t5_df["period_str"].unique())
+                heat_pivot = heat_pivot.reindex(columns=months, fill_value=0)
+
+                text_display = [[f"{int(v)}" if v > 0 else "" for v in row] for row in heat_pivot.values]
+
+                fig_heat = go.Figure(data=go.Heatmap(
+                    z=heat_pivot.values,
+                    x=heat_pivot.columns.tolist(),
+                    y=heat_pivot.index.tolist(),
+                    text=text_display,
+                    texttemplate="%{text}",
+                    textfont={"size": 11},
+                    colorscale=[[0, "#fff3e0"], [0.3, "#ffcc80"], [0.5, "#ff9800"], [0.7, "#f57c00"], [1, "#e65100"]],
+                    hoverongaps=False,
+                    hovertemplate="국가: %{y}<br>월: %{x}<br>트렌드지수: %{z:.0f}<extra></extra>",
+                    colorbar=dict(title="지수", tickformat=".0f", thickness=10, len=0.8),
+                ))
+                fig_heat.update_layout(
+                    height=max(250, len(top5) * 45 + 80),
+                    margin=dict(l=60, r=10, t=10, b=40),
+                    xaxis=dict(tickangle=-45, side="bottom"),
+                    yaxis=dict(autorange="reversed"),
                     plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
-                    xaxis=dict(gridcolor="rgba(0,0,0,0.05)", tickangle=-45, title=""),
-                    yaxis=dict(gridcolor="rgba(0,0,0,0.08)", tickformat=",", title=""),
                 )
-                st.plotly_chart(fig_trend12, use_container_width=True)
+                st.plotly_chart(fig_heat, use_container_width=True)
             else:
                 st.info("트렌드 데이터가 없습니다.")
         else:
