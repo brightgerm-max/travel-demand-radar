@@ -835,22 +835,24 @@ def page_forecast():
             peak_idx = int(np.argmax(prev_vals))
             peak_month = int(prev_months[peak_idx]) if peak_idx < len(prev_months) else 0
             peak_val = float(prev_vals[peak_idx])
-            # 실제 현재 월 기준
-            ref_month = actual_month if 선택_연도 == actual_year else int(c_months[-1])
-            months_to_peak = (peak_month - ref_month) % 12
+            # 전월(완료된 월) 기준 — 당월은 미완료라 전년 비교 부정확
+            ref_month = (actual_month - 1) if actual_month > 1 else 12
+            if 선택_연도 != actual_year:
+                ref_month = int(c_months[-1]) if len(c_months) > 0 else 0
+            months_to_peak = (peak_month - actual_month) % 12  # 피크까지는 실제 현재월 기준
             if 1 <= months_to_peak <= 4 and peak_val > 0:
-                cur_same_idx = np.where(prev_months == ref_month)[0]
-                prev_same_val = float(prev_vals[cur_same_idx[0]]) if len(cur_same_idx) > 0 else 0
-                # 현재 연도 해당 월 데이터가 있는지 확인
-                cur_month_idx = np.where(np.array(c_months) == ref_month)[0]
-                cur_month_val = float(c_vals[cur_month_idx[0]]) if len(cur_month_idx) > 0 else 0
-                if prev_same_val > 0 and cur_month_val > 0:
-                    vs_prev = ((cur_month_val - prev_same_val) / prev_same_val) * 100
+                # 전월 기준 전년 비교
+                prev_ref_idx = np.where(prev_months == ref_month)[0]
+                prev_ref_val = float(prev_vals[prev_ref_idx[0]]) if len(prev_ref_idx) > 0 else 0
+                cur_ref_idx = np.where(np.array(c_months) == ref_month)[0]
+                cur_ref_val = float(c_vals[cur_ref_idx[0]]) if len(cur_ref_idx) > 0 else 0
+                if prev_ref_val > 0 and cur_ref_val > 0:
+                    vs_prev = ((cur_ref_val - prev_ref_val) / prev_ref_val) * 100
                 else:
                     vs_prev = 0
                 body = (f"전년({prev_year}년) 피크: {peak_month}월\n"
-                        f"{선택_연도}년 {ref_month}월 기준, 피크까지 {months_to_peak}개월 남음" +
-                        (f"\n전년 동월 대비 {vs_prev:+.1f}%" if vs_prev != 0 else ""))
+                        f"피크까지 {months_to_peak}개월 남음" +
+                        (f"\n{ref_month}월 기준 전년 동월 대비 {vs_prev:+.1f}%" if vs_prev != 0 else ""))
                 all_insights.append(("opportunity", "💡 기회 발견", country,
                     f"피크 시즌 {months_to_peak}개월 전", body, 50 + abs(vs_prev)))
 
