@@ -414,14 +414,18 @@ def page_forecast():
                     st.checkbox(c, value=True, key=f"fc_c_{c}")
         선택_국가 = [c for c in 국가_목록 if st.session_state.get(f"fc_c_{c}", True)]
 
-        # 요약
-        st.markdown(f"""
-        <div style="padding: 6px 0 8px 0;">
-            <span class="badge">{len(선택_국가)}개국</span>
-            <span class="badge">{선택_연도}년</span>
-            <span class="badge">{len(선택_월)}개월</span>
-        </div>
-        """, unsafe_allow_html=True)
+        # 요약 + 조회 버튼
+        summary_col, btn_col = st.columns([4, 1])
+        with summary_col:
+            st.markdown(f"""
+            <div style="padding: 6px 0 8px 0;">
+                <span class="badge">{len(선택_국가)}개국</span>
+                <span class="badge">{선택_연도}년</span>
+                <span class="badge">{len(선택_월)}개월</span>
+            </div>
+            """, unsafe_allow_html=True)
+        with btn_col:
+            조회_clicked = st.button("🔍 조회", key="fc_search", use_container_width=True, type="primary")
 
     if not 선택_국가:
         st.warning("국가를 1개 이상 선택해주세요.")
@@ -429,6 +433,22 @@ def page_forecast():
     if not 선택_월:
         st.warning("월을 1개 이상 선택해주세요.")
         return
+
+    # 조회 버튼 클릭 시에만 조회 (이전 결과가 있으면 유지)
+    if 조회_clicked:
+        st.session_state["fc_searched"] = True
+        st.session_state["fc_search_year"] = 선택_연도
+        st.session_state["fc_search_months"] = 선택_월
+        st.session_state["fc_search_countries"] = 선택_국가
+
+    if not st.session_state.get("fc_searched", False):
+        st.info("필터를 설정한 후 🔍 조회 버튼을 클릭해주세요.")
+        return
+
+    # 조회 시점의 필터 사용
+    선택_연도 = st.session_state.get("fc_search_year", 선택_연도)
+    선택_월 = st.session_state.get("fc_search_months", 선택_월)
+    선택_국가 = st.session_state.get("fc_search_countries", 선택_국가)
 
     # ── 데이터 로드: API 우선, CSV fallback ───────
     # 전체 국가 키워드로 로드 (캐시 효율화 — 국가 체크 변경 시 재호출 방지)
