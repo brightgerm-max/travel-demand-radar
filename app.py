@@ -847,7 +847,7 @@ def page_forecast():
                     if abs(yoy_rate) >= 5 and cur_avg >= MIN_TREND:
                         direction = "성장" if yoy_rate > 0 else "감소"
                         body = (f"{prev_year}년 대비 {선택_연도}년 검색 수요가 {abs(yoy_rate):.0f}% {'증가' if yoy_rate > 0 else '감소'}")
-                        all_insights.append(("yoy", f"📊 YoY {direction}", country,
+                        all_insights.append(("yoy", f"📊", country,
                             f"{prev_year}년 대비 {yoy_rate:+.1f}%", body, abs(yoy_rate)))
 
         # ── 2. MoM 급등/급락 (국가별 통합 카드) ──────
@@ -1049,8 +1049,8 @@ def page_forecast():
     if all_insights:
         # YoY 필터일 때 성장/하락 그룹 분리
         if insight_filter == "📊 YoY 성장률":
-            yoy_up = [i for i in all_insights if i[0] == "yoy" and "성장" in i[1]]
-            yoy_down = [i for i in all_insights if i[0] == "yoy" and "감소" in i[1]]
+            yoy_up = [i for i in all_insights if i[0] == "yoy" and "+" in i[3]]
+            yoy_down = [i for i in all_insights if i[0] == "yoy" and "-" in i[3]]
             if yoy_up:
                 st.markdown("**📈 성장 국가**")
                 for css_class, badge, country, title, body, _ in yoy_up:
