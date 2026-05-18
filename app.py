@@ -562,31 +562,24 @@ def page_forecast():
         st.dataframe(rank_display, use_container_width=True, height=380)
 
     with col_trend_map:
-        st.markdown("**📊 상위 국가 트렌드**")
+        st.markdown("**📊 상위 국가 트렌드 (국가별 정규화)**")
         if not trend_api_df.empty:
-            # API 트렌드 데이터 사용
             top5 = 국가순위[:5]
             t5_df = trend_api_df[trend_api_df["국가"].isin(top5)].copy()
             if not t5_df.empty:
                 t5_df["period_str"] = t5_df["period"].dt.strftime("%Y-%m")
-                # 트렌드 → 추정 검색수 변환
-                y_col_t5 = "ratio"
-                if not search_df.empty:
-                    country_vol = search_df.groupby("국가")["총검색수"].sum().to_dict()
-                    est = []
-                    for _, row in t5_df.iterrows():
-                        vol = country_vol.get(row["국가"], 0)
-                        ct = t5_df[t5_df["국가"] == row["국가"]]
-                        ref = ct[ct["ratio"] > 0]["ratio"].iloc[-1] if len(ct[ct["ratio"] > 0]) > 0 else 0
-                        est.append(int(row["ratio"] * vol / ref) if ref > 0 and vol > 0 else 0)
-                    t5_df["추정검색수"] = est
-                    if sum(est) > 0:
-                        y_col_t5 = "추정검색수"
+                # 국가별 개별 정규화: 각 국가의 max를 100으로
+                t5_df["트렌드지수"] = 0.0
+                for country in top5:
+                    mask = t5_df["국가"] == country
+                    c_max = t5_df.loc[mask, "ratio"].max()
+                    if c_max > 0:
+                        t5_df.loc[mask, "트렌드지수"] = (t5_df.loc[mask, "ratio"] / c_max * 100).round(1)
                 fig_trend12 = px.line(
-                    t5_df, x="period_str", y=y_col_t5, color="국가",
+                    t5_df, x="period_str", y="트렌드지수", color="국가",
                     markers=True, color_discrete_map=color_map,
                     category_orders={"국가": top5},
-                    labels={"period_str": "", y_col_t5: ""},
+                    labels={"period_str": "", "트렌드지수": ""},
                 )
                 fig_trend12.update_layout(
                     height=400, margin=dict(l=0, r=0, t=30, b=40),
