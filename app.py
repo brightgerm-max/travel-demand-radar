@@ -158,6 +158,29 @@ def load_searchad_data(keywords_tuple):
             })
     return pd.DataFrame(rows) if rows else pd.DataFrame()
 
+@st.cache_data(ttl=21600, show_spinner="📊 일별 트렌드 조회 중...")
+def load_daily_trend(keywords_tuple, start_date, end_date):
+    """데이터랩 API로 국가별 일별 트렌드 조회 (MoM 동기간 비교용)."""
+    if not naver_datalab.is_available():
+        return pd.DataFrame()
+    keywords_by_country = dict(keywords_tuple)
+    countries = list(keywords_by_country.keys())
+    all_dfs = []
+    for i in range(0, len(countries), 5):
+        batch_countries = countries[i:i+5]
+        groups = []
+        for c in batch_countries:
+            kw_list = keywords_by_country[c]
+            if kw_list:
+                groups.append({"groupName": c, "keywords": kw_list[:5]})
+        if not groups:
+            continue
+        df = naver_datalab.fetch_trend(groups, start_date, end_date, time_unit="date")
+        if not df.empty:
+            df = df.rename(columns={"keyword": "국가"})
+            all_dfs.append(df)
+    return pd.concat(all_dfs, ignore_index=True) if all_dfs else pd.DataFrame()
+
 @st.cache_data(ttl=21600, show_spinner="📈 트렌드 데이터 조회 중...")  # 6시간 (당월 데이터 매일 갱신)
 def load_trend_data(keywords_tuple, start_date, end_date):
     """데이터랩 API로 국가별 키워드 트렌드 조회. 5개국씩 배치."""
@@ -513,10 +536,18 @@ def page_forecast():
         # 전년도 트렌드 (인사이트용)
         prev_year = 선택_연도 - 1
         trend_prev_df = load_trend_data(kw_tuple, f"{prev_year}-01-01", f"{prev_year}-12-31")
+        # 일별 트렌드 (MoM 동기간 비교용) — 전월 1일 ~ 오늘
+        from datetime import date as _d
+        if 선택_연도 >= _d.today().year:
+            _prev_month_start = f"{선택_연도}-{max(_d.today().month-1,1):02d}-01"
+            daily_trend_df = load_daily_trend(kw_tuple, _prev_month_start, _d.today().isoformat())
+        else:
+            daily_trend_df = pd.DataFrame()
     else:
         search_df = pd.DataFrame()
         trend_api_df = pd.DataFrame()
         trend_prev_df = pd.DataFrame()
+        daily_trend_df = pd.DataFrame()
 
     # API 데이터 또는 CSV fallback — 선택 국가만 필터
     if not search_df.empty:
@@ -819,17 +850,76 @@ def page_forecast():
                         all_insights.append(("yoy", f"📊 YoY {direction}", country,
                             f"{prev_year}년 대비 {yoy_rate:+.1f}%", body, abs(yoy_rate)))
 
-        # ── 2. MoM 급등/급락 (의미 있는 국가만) ──
-        if len(c_vals) >= 2 and float(c_vals[-1]) >= MIN_TREND:
-            mom_rate = ((c_vals[-1] - c_vals[-2]) / c_vals[-2]) if c_vals[-2] > 0 else 0
-            if abs(mom_rate) >= 0.15:
-                badge = "⚡ 급등" if mom_rate > 0 else "📉 급락"
-                css = "surge" if mom_rate > 0 else "drop"
-                prev_m = int(c_months[-2]) if len(c_months) >= 2 else 0
-                cur_m = int(c_months[-1]) if len(c_months) >= 1 else 0
-                body = f"{prev_m}월: {c_vals[-2]:.1f} → {cur_m}월: {c_vals[-1]:.1f}"
-                all_insights.append((css, badge, country,
-                    f"전월 대비 {mom_rate*100:+.0f}%", body, abs(mom_rate)*100))
+        # ── 2. MoM 급등/급락 ──────────────────────
+        from datetime import date as _dt
+        _today = _dt.today()
+        _cur_year = _today.year
+        _cur_month = _today.month
+        _cur_day = _today.day
+
+        # 2a. 완료된 마지막 2개월 비교
+        if 선택_연도 >= _cur_year and len(c_vals) >= 3:
+            # 당월 제외, 완료된 마지막 2개월
+            completed = [(c_months[i], c_vals[i]) for i in range(len(c_vals)) if not (int(c_months[i]) == _cur_month and 선택_연도 == _cur_year)]
+            if len(completed) >= 2:
+                m_prev, v_prev = completed[-2]
+                m_cur, v_cur = completed[-1]
+                if v_prev > 0 and v_cur >= MIN_TREND:
+                    mom_rate = ((v_cur - v_prev) / v_prev)
+                    if abs(mom_rate) >= 0.15:
+                        # 추정 검색수 변환
+                        country_vol = search_df.groupby("국가")["총검색수"].sum().to_dict() if not search_df.empty else {}
+                        vol = country_vol.get(country, 0)
+                        ref_ratio = v_cur if v_cur > 0 else 1
+                        factor = vol / ref_ratio if ref_ratio > 0 and vol > 0 else 0
+                        est_prev = int(v_prev * factor) if factor > 0 else 0
+                        est_cur = int(v_cur * factor) if factor > 0 else 0
+                        badge = "⚡ 급등" if mom_rate > 0 else "📉 급락"
+                        css = "surge" if mom_rate > 0 else "drop"
+                        body = f"{int(m_prev)}월: {est_prev:,} → {int(m_cur)}월: {est_cur:,} (추정 검색수)" if factor > 0 else f"{int(m_prev)}월 → {int(m_cur)}월"
+                        all_insights.append((css, badge, country,
+                            f"{int(m_prev)}월→{int(m_cur)}월 {mom_rate*100:+.0f}%", body, abs(mom_rate)*100))
+        elif len(c_vals) >= 2:
+            # 과거 연도: 모든 월 완료, 기존 로직
+            if c_vals[-2] > 0 and c_vals[-1] >= MIN_TREND:
+                mom_rate = ((c_vals[-1] - c_vals[-2]) / c_vals[-2])
+                if abs(mom_rate) >= 0.15:
+                    badge = "⚡ 급등" if mom_rate > 0 else "📉 급락"
+                    css = "surge" if mom_rate > 0 else "drop"
+                    body = f"{int(c_months[-2])}월 → {int(c_months[-1])}월"
+                    all_insights.append((css, badge, country,
+                        f"전월 대비 {mom_rate*100:+.0f}%", body, abs(mom_rate)*100))
+
+        # 2b. 당월 동기간 비교 (현재 연도만)
+        if 선택_연도 >= _cur_year and not daily_trend_df.empty:
+            c_daily = daily_trend_df[daily_trend_df["국가"] == country].copy()
+            if not c_daily.empty and "period" in c_daily.columns:
+                c_daily["period"] = pd.to_datetime(c_daily["period"], errors="coerce")
+                c_daily = c_daily.dropna(subset=["period"])
+                c_daily["month"] = c_daily["period"].dt.month
+                c_daily["day"] = c_daily["period"].dt.day
+                prev_m_data = c_daily[(c_daily["month"] == _cur_month - 1) & (c_daily["day"] <= _cur_day)]
+                cur_m_data = c_daily[c_daily["month"] == _cur_month]
+                if len(prev_m_data) > 0 and len(cur_m_data) > 0:
+                    prev_sum = prev_m_data["ratio"].sum()
+                    cur_sum = cur_m_data["ratio"].sum()
+                    if prev_sum > 0:
+                        same_period_rate = ((cur_sum - prev_sum) / prev_sum)
+                        if abs(same_period_rate) >= 0.1:
+                            # 추정 검색수 변환
+                            country_vol2 = search_df.groupby("국가")["총검색수"].sum().to_dict() if not search_df.empty else {}
+                            vol2 = country_vol2.get(country, 0)
+                            # 전월 전체 트렌드 합으로 factor 계산
+                            prev_full = c_daily[c_daily["month"] == _cur_month - 1]["ratio"].sum()
+                            factor2 = vol2 / prev_full if prev_full > 0 and vol2 > 0 else 0
+                            est_prev2 = int(prev_sum * factor2) if factor2 > 0 else 0
+                            est_cur2 = int(cur_sum * factor2) if factor2 > 0 else 0
+                            badge2 = "⚡ 급등" if same_period_rate > 0 else "📉 급락"
+                            css2 = "surge" if same_period_rate > 0 else "drop"
+                            body2 = (f"{_cur_month-1}월 1~{_cur_day}일: {est_prev2:,} vs {_cur_month}월 1~{_cur_day}일: {est_cur2:,} (추정 검색수)" if factor2 > 0
+                                     else f"{_cur_month-1}월 1~{_cur_day}일 vs {_cur_month}월 1~{_cur_day}일")
+                            all_insights.append((css2, f"{badge2} 당월속보", country,
+                                f"당월 동기간 {same_period_rate*100:+.0f}%", body2, abs(same_period_rate)*80))
 
         # ── 3. 계절성 예측 (현재/미래 연도만, 의미 있는 국가만) ──
         from datetime import date as _date
