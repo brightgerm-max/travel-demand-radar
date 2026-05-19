@@ -1724,9 +1724,9 @@ def page_settings():
         else:
             st.caption("(없음)")
         import re as _re
-        with st.form("own_bkw_add"):
-            new_bkw = st.text_area("추가할 브랜드 키워드 (쉼표/줄바꿈 구분)", height=60, key="set_new_bkw")
-            if st.form_submit_button("추가", type="primary"):
+        with st.expander("브랜드 키워드 편집", expanded=False):
+            new_bkw = st.text_area("추가 (쉼표/줄바꿈 구분)", height=60, key="set_new_bkw")
+            if st.button("추가", key="set_add_bkw") and new_bkw:
                 parsed = [k.strip() for k in _re.split(r"[,;\n\r]+", new_bkw) if k.strip()]
                 added = [k for k in parsed if k not in own_bkw]
                 if added:
@@ -1734,18 +1734,17 @@ def page_settings():
                     company_info["자사"]["brand_keywords"] = own_bkw
                     save_json("company_info.json", company_info)
                     st.rerun()
-        if own_bkw:
-            with st.form("own_bkw_del"):
-                st.caption("삭제할 키워드를 선택하세요:")
-                del_checks = {}
+            if own_bkw:
+                st.markdown("---")
+                st.caption("삭제할 키워드 선택:")
+                del_targets = []
                 for kw in own_bkw:
-                    del_checks[kw] = st.checkbox(kw, key=f"own_bkw_del_{kw}")
-                if st.form_submit_button("선택 삭제"):
-                    to_del = [kw for kw, v in del_checks.items() if v]
-                    if to_del:
-                        company_info["자사"]["brand_keywords"] = [k for k in own_bkw if k not in to_del]
-                        save_json("company_info.json", company_info)
-                        st.rerun()
+                    if st.checkbox(kw, key=f"own_bkw_del_{kw}"):
+                        del_targets.append(kw)
+                if del_targets and st.button(f"선택 삭제 ({len(del_targets)}개)", key="set_del_bkw"):
+                    company_info["자사"]["brand_keywords"] = [k for k in own_bkw if k not in del_targets]
+                    save_json("company_info.json", company_info)
+                    st.rerun()
 
         # 자사 정보 저장
         if st.button("💾 자사 정보 저장", key="set_save_own"):
