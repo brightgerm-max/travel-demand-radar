@@ -1649,7 +1649,7 @@ def page_discover():
                     target_cat = st.selectbox("추가 대상 카테고리", categories, key="newkw_target")
                 with c3:
                     st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)
-                    if st.button("➕ 추가", key="newkw_add_btn") and add_kws:
+                    if st.button("추가", key="newkw_add_btn", type="primary") and add_kws:
                         if "/" in target_cat:
                             _, country = target_cat.split("/", 1)
                             kw_data["국가별"][country].extend(add_kws)
@@ -1704,14 +1704,14 @@ def page_settings():
             new_mall = st.text_input("추가할 쇼핑몰명", key="set_new_mall")
         with c2:
             st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)
-            if st.button("추가", key="set_add_mall") and new_mall:
+            if st.button("추가", key="set_add_mall", type="primary") and new_mall:
                 own_malls.append(new_mall)
                 company_info["자사"] = {"name": own_name, "mall_names": own_malls, "brand_keywords": own.get("brand_keywords", [])}
                 save_json("company_info.json", company_info)
                 st.rerun()
         if own_malls:
             del_mall = st.selectbox("삭제할 쇼핑몰명", own_malls, key="set_del_mall")
-            if st.button("선택 삭제", key="set_rm_mall"):
+            if st.button("선택 삭제", key="set_rm_mall", type="primary"):
                 own_malls.remove(del_mall)
                 company_info["자사"]["mall_names"] = own_malls
                 save_json("company_info.json", company_info)
@@ -1726,7 +1726,7 @@ def page_settings():
         import re as _re
         with st.expander("브랜드 키워드 편집", expanded=False):
             new_bkw = st.text_area("추가 (쉼표/줄바꿈 구분)", height=60, key="set_new_bkw")
-            if st.button("추가", key="set_add_bkw") and new_bkw:
+            if st.button("추가", key="set_add_bkw", type="primary") and new_bkw:
                 parsed = [k.strip() for k in _re.split(r"[,;\n\r]+", new_bkw) if k.strip()]
                 added = [k for k in parsed if k not in own_bkw]
                 if added:
@@ -1741,13 +1741,13 @@ def page_settings():
                 for kw in own_bkw:
                     if st.checkbox(kw, key=f"own_bkw_del_{kw}"):
                         del_targets.append(kw)
-                if del_targets and st.button(f"선택 삭제 ({len(del_targets)}개)", key="set_del_bkw"):
+                if st.button("선택 삭제", key="set_del_bkw", type="primary") and del_targets:
                     company_info["자사"]["brand_keywords"] = [k for k in own_bkw if k not in del_targets]
                     save_json("company_info.json", company_info)
                     st.rerun()
 
         # 자사 정보 저장
-        if st.button("💾 자사 정보 저장", key="set_save_own"):
+        if st.button("자사 정보 저장", key="set_save_own", type="primary"):
             company_info["자사"] = {"name": own_name, "mall_names": own_malls, "brand_keywords": own_bkw}
             save_json("company_info.json", company_info)
             st.success("저장 완료!")
@@ -1766,7 +1766,7 @@ def page_settings():
                     edit_name = st.text_input("회사명", value=comp["name"], key=f"comp_name_{idx}")
                     edit_malls = st.text_input("쇼핑몰명 (쉼표구분)", value=",".join(comp.get("mall_names", [])), key=f"comp_mall_{idx}")
                     edit_bkw = st.text_input("브랜드키워드 (쉼표구분)", value=",".join(comp.get("brand_keywords", [])), key=f"comp_bkw_{idx}")
-                    if st.button("편집 저장", key=f"comp_save_{idx}"):
+                    if st.button("편집 저장", key=f"comp_save_{idx}", type="primary"):
                         competitors[idx] = {
                             "name": edit_name,
                             "mall_names": [m.strip() for m in edit_malls.split(",") if m.strip()],
@@ -1777,7 +1777,7 @@ def page_settings():
                         st.success(f"{edit_name} 저장 완료!")
                         st.rerun()
                 with c2:
-                    if st.button(f"🗑️ {comp['name']} 삭제", key=f"comp_del_{idx}"):
+                    if st.button(f"{comp['name']} 삭제", key=f"comp_del_{idx}", type="primary"):
                         competitors.pop(idx)
                         company_info["경쟁사"] = competitors
                         save_json("company_info.json", company_info)
@@ -1791,7 +1791,7 @@ def page_settings():
             add_comp_malls = st.text_input("쇼핑몰명 (쉼표구분)", key="add_comp_malls")
         with c3:
             add_comp_bkw = st.text_input("브랜드키워드 (쉼표구분)", key="add_comp_bkw")
-        if st.button("➕ 경쟁사 추가", key="add_comp_btn") and add_comp_name:
+        if st.button("경쟁사 추가", key="add_comp_btn", type="primary") and add_comp_name:
             competitors.append({
                 "name": add_comp_name,
                 "mall_names": [m.strip() for m in add_comp_malls.split(",") if m.strip()],
@@ -1841,7 +1841,7 @@ def page_settings():
                     checks = {}
                     for kw in keywords:
                         checks[kw] = st.checkbox(kw, key=f"kwchk_{prefix}_{kw}")
-                    if st.form_submit_button("선택 삭제"):
+                    if st.form_submit_button("선택 삭제", type="primary"):
                         to_del = [kw for kw, v in checks.items() if v]
                         if to_del:
                             remaining = [k for k in keywords if k not in to_del]
@@ -1870,7 +1870,7 @@ def page_settings():
         st.markdown("---")
         with st.form("kw_add_country"):
             new_country = st.text_input("새 국가 카테고리 추가")
-            if st.form_submit_button("추가"):
+            if st.form_submit_button("추가", type="primary"):
                 if new_country:
                     if "국가별" not in kw_data:
                         kw_data["국가별"] = {}
@@ -1978,7 +1978,7 @@ def page_settings():
             add_iso2 = st.text_input("ISO Alpha-2", key="country_add_iso2")
         with c4:
             st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)
-            if st.button("추가", key="country_add_btn") and add_country_name and add_iso3:
+            if st.button("추가", key="country_add_btn", type="primary") and add_country_name and add_iso3:
                 country_map[add_country_name] = {"iso_alpha3": add_iso3.upper(), "iso_alpha2": add_iso2.upper()}
                 save_json("country_mapping.json", country_map)
                 st.success(f"{add_country_name} 추가 완료!")
@@ -1992,7 +1992,7 @@ def page_settings():
                 del_country = st.selectbox("삭제할 국가", list(country_map.keys()), key="country_del_select")
             with c2:
                 st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)
-                if st.button("삭제", key="country_del_btn"):
+                if st.button("삭제", key="country_del_btn", type="primary"):
                     del country_map[del_country]
                     save_json("country_mapping.json", country_map)
                     st.success(f"{del_country} 삭제 완료!")
