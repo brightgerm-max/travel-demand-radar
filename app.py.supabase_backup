@@ -34,34 +34,70 @@ if _env_path.exists():
 # ── 페이지 설정 ─────────────────────────────────────
 st.set_page_config(page_title="Klook Travel Demand Radar", layout="wide", page_icon="klook-app.png")
 
-# ── 경로 상수 (Railway Volume 우선, 없으면 로컬) ──────
+# ── 경로 상수 ───────────────────────────────────────
 BASE_DIR = Path(__file__).parent
-_VOLUME_DIR = Path("/data")
-_LOCAL_DIR = BASE_DIR / "data"
-if _VOLUME_DIR.exists() and _VOLUME_DIR.is_dir():
-    DATA_DIR = _VOLUME_DIR
-    # 최초 실행 시 Git 기본 데이터를 Volume에 복사
-    import shutil
-    for f in _LOCAL_DIR.glob("*.json"):
-        dest = DATA_DIR / f.name
-        if not dest.exists():
-            shutil.copy2(f, dest)
-else:
-    DATA_DIR = _LOCAL_DIR
+DATA_DIR = BASE_DIR / "data"
 
 # ── API 임포트 ──────────────────────────────────────
 from api import naver_datalab, naver_searchad, naver_shopping, tourism_stats
 
-# ── 데이터 로더 (Railway Volume / 로컬 JSON) ─────────
+# ── Supabase 연결 ──────────────────────────────────────
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://pdrynagoznsomxrrmlca.supabase.co")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBkcnluYWdvem5zb214cnJtbGNhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwODYzMDIsImV4cCI6MjA5NDY2MjMwMn0.owcACYsMDb2m1s0kLYAdN3Y0OJhRRxD0q_neXXIzouU")
+
+def _supabase_headers():
+    return {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation",
+    }
+
+def _supabase_available():
+    return bool(SUPABASE_URL) and bool(SUPABASE_KEY)
+
+# ── 데이터 로더 (Supabase 우선, JSON fallback) ────────
 def load_json(filename):
+    """Supabase에서 로드, 없으면 로컬 JSON fallback."""
+    if _supabase_available():
+        try:
+            doc_id = filename.replace(".json", "")
+            resp = requests.get(
+                f"{SUPABASE_URL}/rest/v1/app_settings?id=eq.{doc_id}&select=data",
+                headers=_supabase_headers(), timeout=5,
+            )
+            if resp.status_code == 200:
+                rows = resp.json()
+                if rows and len(rows) > 0:
+                    return rows[0]["data"]
+        except Exception:
+            pass
+    # Fallback: 로컬 JSON
     path = DATA_DIR / filename
     if path.exists():
         return json.loads(path.read_text(encoding="utf-8"))
     return {}
 
 def save_json(filename, data):
-    path = DATA_DIR / filename
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    """Supabase에 저장, 실패 시 로컬 JSON에도 저장."""
+    # Supabase upsert
+    if _supabase_available():
+        try:
+            doc_id = filename.replace(".json", "")
+            body = {"id": doc_id, "data": data, "updated_at": "now()"}
+            resp = requests.post(
+                f"{SUPABASE_URL}/rest/v1/app_settings",
+                headers={**_supabase_headers(), "Prefer": "resolution=merge-duplicates,return=representation"},
+                json=body, timeout=5,
+            )
+        except Exception:
+            pass
+    # 로컬에도 저장 (백업)
+    try:
+        path = DATA_DIR / filename
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
 
 @st.cache_data
 def load_fallback_data():
