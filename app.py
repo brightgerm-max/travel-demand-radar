@@ -698,7 +698,7 @@ def page_forecast():
                 fig_heat.update_layout(
                     height=430,
                     margin=dict(l=60, r=10, t=10, b=40),
-                    xaxis=dict(tickangle=-45, side="bottom"),
+                    xaxis=dict(type="category", tickangle=-45, side="bottom"),
                     yaxis=dict(autorange="reversed"),
                     plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
                 )
